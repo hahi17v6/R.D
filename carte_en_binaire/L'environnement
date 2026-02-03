@@ -1,32 +1,32 @@
-from PIL import Image
-import numpy as np
+#include "map_data_optimized.h"
 
-# Nom de ton fichier
-nom_fichier = "plans bat compresser.png"
+// Fonction pour savoir si une coordonnée (x, y) est un mur (1) ou du vide (0)
+bool getMapPixel(int x, int y) {
+  if (x < 0 || x >= MAP_WIDTH || y < 0 || y >= MAP_HEIGHT) return true; // Hors limite = Obstacle
 
-try:
-    # Ouvrir l'image et convertir en Noir et Blanc pur (1 bit)
-    # Le seuil (threshold) décide à quel niveau de gris on passe au noir
-    img = Image.open(nom_fichier).convert('L') # Niveaux de gris
-    
-    # Redimensionnement optionnel si tu veux un résultat moins lourd
-    # Décommente la ligne ci-dessous pour réduire la taille par 2 :
-    # img = img.resize((int(img.width / 2), int(img.height / 2)))
+  // Comme les pixels sont "packés" par 8 dans chaque octet :
+  int bytesPerRow = (MAP_WIDTH + 7) / 8;
+  int byteIdx = (y * bytesPerRow) + (x / 8);
+  int bitIdx = 7 - (x % 8);
 
-    arr = np.array(img)
-    
-    # Logique : Si le pixel est sombre (< 128), c'est un Mur (1). Sinon Vide (0).
-    # On utilise 128 comme seuil moyen.
-    binaire = (arr < 128).astype(int)
+  // Lecture sécurisée dans la mémoire Flash
+  uint8_t byteVal = pgm_read_byte(&(map_data[byteIdx]));
+  
+  return (byteVal >> bitIdx) & 0x01;
+}
 
-    # Sauvegarde
-    with open("plan_binaire.txt", "w") as f:
-        for ligne in binaire:
-            # Écrit la ligne sans espaces (ex: 0011100)
-            f.write(''.join(map(str, ligne)) + "\n")
+void setup() {
+  Serial.begin(115200);
+  Serial.print("Carte chargee : ");
+  Serial.print(MAP_WIDTH);
+  Serial.print("x");
+  Serial.println(MAP_HEIGHT);
+}
 
-    print(f"Succès ! Le fichier 'plan_binaire.txt' a été créé à partir de {nom_fichier}.")
-    print(f"Dimensions de la matrice : {binaire.shape[1]} colonnes x {binaire.shape[0]} lignes")
-
-except FileNotFoundError:
-    print(f"Erreur : Le fichier '{nom_fichier}' n'est pas trouvé. Vérifie qu'il est dans le même dossier que ce script.")
+void loop() {
+  // Exemple : vérifier si le centre de la carte est un obstacle
+  if (getMapPixel(MAP_WIDTH/2, MAP_HEIGHT/2)) {
+    Serial.println("Obstacle detecte au centre !");
+  }
+  delay(1000);
+}
