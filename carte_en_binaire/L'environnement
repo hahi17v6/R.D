@@ -1,0 +1,32 @@
+from PIL import Image
+import numpy as np
+
+# Nom de ton fichier
+nom_fichier = "plans bat compresser.png"
+
+try:
+    # Ouvrir l'image et convertir en Noir et Blanc pur (1 bit)
+    # Le seuil (threshold) décide à quel niveau de gris on passe au noir
+    img = Image.open(nom_fichier).convert('L') # Niveaux de gris
+    
+    # Redimensionnement optionnel si tu veux un résultat moins lourd
+    # Décommente la ligne ci-dessous pour réduire la taille par 2 :
+    # img = img.resize((int(img.width / 2), int(img.height / 2)))
+
+    arr = np.array(img)
+    
+    # Logique : Si le pixel est sombre (< 128), c'est un Mur (1). Sinon Vide (0).
+    # On utilise 128 comme seuil moyen.
+    binaire = (arr < 128).astype(int)
+
+    # Sauvegarde
+    with open("plan_binaire.txt", "w") as f:
+        for ligne in binaire:
+            # Écrit la ligne sans espaces (ex: 0011100)
+            f.write(''.join(map(str, ligne)) + "\n")
+
+    print(f"Succès ! Le fichier 'plan_binaire.txt' a été créé à partir de {nom_fichier}.")
+    print(f"Dimensions de la matrice : {binaire.shape[1]} colonnes x {binaire.shape[0]} lignes")
+
+except FileNotFoundError:
+    print(f"Erreur : Le fichier '{nom_fichier}' n'est pas trouvé. Vérifie qu'il est dans le même dossier que ce script.")
