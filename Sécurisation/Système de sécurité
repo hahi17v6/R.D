@@ -1,6 +1,7 @@
 #include <Keypad.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
+#include <Servo.h> 
 
 // ---------- LCD ----------
 LiquidCrystal_I2C lcd(0x20, 20, 4);
@@ -21,15 +22,22 @@ byte colPins[COLS] = {5, 4, 3};
 
 Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
+// ---------- SERVOMOTEUR (FS5106B) ----------
+Servo monServo;
+const int servoPin = 2; // Fil jaune/blanc du servo sur D2
+
+// Le FS5106B a une plage standard. 
+// Ajustez ces angles si le loquet ne tourne pas assez ou trop.
+const int ANGLE_VERROUILLE = 0;   
+const int ANGLE_DEVERROUILLE = 90; 
+
 // ---------- CONFIG ----------
 const int nbCasiers = 3;
 const int longueurCode = 6;
 const int longueurAdmin = 12;
 const unsigned long tempsAffichage = 1000;
 
-const String codeAdmin = "123456789012"; // A CHANGER
-
-const int relayPin = 2; // RELAIS D2
+const String codeAdmin = "123456789012"; 
 
 // ---------- ETATS ----------
 enum Etat { 
@@ -148,21 +156,38 @@ void afficherAdminCasier(int casier) {
   adminCasierSelectionne = casier;
 }
 
+// --- FONCTION D'OUVERTURE ---
 void ouvrirCasier(int casier) {
   lcd.clear();
   lcd.setCursor(0,0);
   lcd.print("Casier ");
   lcd.print(casier+1);
-  lcd.print(" ouvert");
+  lcd.print(" OUVERT");
+  
+  // Mouvement servo
+  monServo.attach(servoPin, 500, 2500); // Ré-attache pour le mouvement
+  monServo.write(ANGLE_DEVERROUILLE); 
+  delay(500); // Temps pour que le servo atteigne la position
+  
+  // On laisse ouvert 4 secondes
   lcd.setCursor(0,2);
   lcd.print("Recuperer/deposer");
+  delay(4000); 
 
-  digitalWrite(relayPin, HIGH);
-  delay(1000);
-  digitalWrite(relayPin, LOW);
+  // Fermeture
+  monServo.write(ANGLE_VERROUILLE);
+  delay(500); // Temps pour revenir
+  
+  // Optionnel : Détacher le servo pour économiser l'énergie 
+  // et éviter le bourdonnement si le mécanisme force un peu.
+  // Ne le faites pas si la porte s'ouvre toute seule sans le couple du moteur.
+  monServo.detach(); 
 
-  genererCodeCasier(casier);
-  delay(2000);
+  genererCodeCasier(casier); 
+  
+  lcd.setCursor(0,3);
+  lcd.print("Verrouillage OK");
+  delay(1500);
 }
 
 void regenCodeCasierAdmin(int casier) {
@@ -180,8 +205,12 @@ void setup() {
   Serial.begin(9600);
   randomSeed(analogRead(A0));
 
-  pinMode(relayPin, OUTPUT);
-  digitalWrite(relayPin, LOW);
+  // Initialisation Servo
+  // Le FS5106B utilise généralement des impulsions de 500us à 2500us
+  monServo.attach(servoPin, 500, 2500); 
+  monServo.write(ANGLE_VERROUILLE); // Position de départ fermée
+  delay(500);
+  monServo.detach(); // On détache pour éviter qu'il force au repos
 
   genererTousLesCodes();
 
@@ -192,6 +221,7 @@ void setup() {
 
 // ---------- LOOP ----------
 void loop() {
+  // Gestion affichage masqué (étoiles)
   if (etat == SAISIE_CODE) {
     for (int i = 0; i < codeSaisi.length(); i++) {
       if (!masque[i] && millis() - tempsTouches[i] >= tempsAffichage) {
@@ -202,6 +232,7 @@ void loop() {
     }
   }
 
+  // Gestion affichage masqué Admin
   if (etat == SAISIE_ADMIN) {
     for (int i = 0; i < codeAdminSaisi.length(); i++) {
       if (!masqueAdmin[i] && millis() - tempsAdmin[i] >= tempsAffichage) {
@@ -233,14 +264,15 @@ void loop() {
       lcd.clear();
       if (codeSaisi == codes[casierSelectionne]) {
         ouvrirCasier(casierSelectionne);
+        afficherChoixCasier();
       } else {
         lcd.setCursor(0, 0);
         lcd.print("Code faux");
         lcd.setCursor(0, 1);
-        lcd.print("Appuyez # pour retour");
+        lcd.print("Appuyez #");
         delay(2000);
+        afficherChoixCasier();
       }
-      afficherChoixCasier();
     } else if (codeSaisi.length() < longueurCode) {
       int pos = codeSaisi.length();
       codeSaisi += key;
