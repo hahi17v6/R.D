@@ -24,10 +24,9 @@ Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
 // ---------- SERVOMOTEUR (FS5106B) ----------
 Servo monServo;
-const int servoPin = 2; // Fil jaune/blanc du servo sur D2
+const int servoPin = 2; // Pin Digital 2
 
-// Le FS5106B a une plage standard. 
-// Ajustez ces angles si le loquet ne tourne pas assez ou trop.
+// Angles pour le FS5106B (A ajuster si besoin)
 const int ANGLE_VERROUILLE = 0;   
 const int ANGLE_DEVERROUILLE = 90; 
 
@@ -35,7 +34,6 @@ const int ANGLE_DEVERROUILLE = 90;
 const int nbCasiers = 3;
 const int longueurCode = 6;
 const int longueurAdmin = 12;
-const unsigned long tempsAffichage = 1000;
 
 const String codeAdmin = "123456789012"; 
 
@@ -55,18 +53,13 @@ String codeAdminSaisi = "";
 int casierSelectionne = -1;
 int adminCasierSelectionne = -1;
 
-unsigned long tempsTouches[longueurCode];
-bool masque[longueurCode];
-
-unsigned long tempsAdmin[longueurAdmin];
-bool masqueAdmin[longueurAdmin];
-
 // ---------- FONCTIONS ----------
 void genererCodeCasier(int c) {
   codes[c] = "";
   for (int i = 0; i < longueurCode; i++) {
     codes[c] += String(random(0, 10));
   }
+  // Debug sur le port série
   Serial.print("Casier ");
   Serial.print(c + 1);
   Serial.print(" : ");
@@ -109,8 +102,8 @@ void afficherSaisieCode() {
   lcd.print("Code casier ");
   lcd.print(casierSelectionne + 1);
   lcd.setCursor(0, 1);
+  // On vide la variable de saisie
   codeSaisi = "";
-  for (int i = 0; i < longueurCode; i++) masque[i] = false;
   etat = SAISIE_CODE;
 }
 
@@ -121,7 +114,6 @@ void afficherSaisieAdmin() {
   lcd.setCursor(0, 1);
   lcd.print("Code: ");
   codeAdminSaisi = "";
-  for (int i = 0; i < longueurAdmin; i++) masqueAdmin[i] = false;
   etat = SAISIE_ADMIN;
 }
 
@@ -164,23 +156,18 @@ void ouvrirCasier(int casier) {
   lcd.print(casier+1);
   lcd.print(" OUVERT");
   
-  // Mouvement servo
-  monServo.attach(servoPin, 500, 2500); // Ré-attache pour le mouvement
+  // Ouverture Servo
+  monServo.attach(servoPin, 500, 2500); 
   monServo.write(ANGLE_DEVERROUILLE); 
-  delay(500); // Temps pour que le servo atteigne la position
+  delay(500); 
   
-  // On laisse ouvert 4 secondes
   lcd.setCursor(0,2);
   lcd.print("Recuperer/deposer");
-  delay(4000); 
+  delay(4000); // Reste ouvert 4 secondes
 
-  // Fermeture
+  // Fermeture Servo
   monServo.write(ANGLE_VERROUILLE);
-  delay(500); // Temps pour revenir
-  
-  // Optionnel : Détacher le servo pour économiser l'énergie 
-  // et éviter le bourdonnement si le mécanisme force un peu.
-  // Ne le faites pas si la porte s'ouvre toute seule sans le couple du moteur.
+  delay(500); 
   monServo.detach(); 
 
   genererCodeCasier(casier); 
@@ -206,11 +193,10 @@ void setup() {
   randomSeed(analogRead(A0));
 
   // Initialisation Servo
-  // Le FS5106B utilise généralement des impulsions de 500us à 2500us
   monServo.attach(servoPin, 500, 2500); 
-  monServo.write(ANGLE_VERROUILLE); // Position de départ fermée
+  monServo.write(ANGLE_VERROUILLE); 
   delay(500);
-  monServo.detach(); // On détache pour éviter qu'il force au repos
+  monServo.detach(); 
 
   genererTousLesCodes();
 
@@ -221,30 +207,11 @@ void setup() {
 
 // ---------- LOOP ----------
 void loop() {
-  // Gestion affichage masqué (étoiles)
-  if (etat == SAISIE_CODE) {
-    for (int i = 0; i < codeSaisi.length(); i++) {
-      if (!masque[i] && millis() - tempsTouches[i] >= tempsAffichage) {
-        masque[i] = true;
-        lcd.setCursor(i, 1);
-        lcd.print('*');
-      }
-    }
-  }
-
-  // Gestion affichage masqué Admin
-  if (etat == SAISIE_ADMIN) {
-    for (int i = 0; i < codeAdminSaisi.length(); i++) {
-      if (!masqueAdmin[i] && millis() - tempsAdmin[i] >= tempsAffichage) {
-        masqueAdmin[i] = true;
-        lcd.setCursor(6 + i, 1);
-        lcd.print('*');
-      }
-    }
-  }
-
   char key = keypad.getKey();
-  if (!key) return;
+  
+  if (!key) return; // Si aucune touche n'est appuyée, on ne fait rien
+
+  // --- LOGIQUE DES ÉTATS ---
 
   if (etat == CHOIX_CASIER) {
     if (key == '*') {
@@ -255,12 +222,19 @@ void loop() {
       casierSelectionne = key - '1';
       afficherValidationCasier();
     }
-  } else if (etat == VALIDATION_CASIER) {
+  } 
+  
+  else if (etat == VALIDATION_CASIER) {
     if (key == '*') afficherSaisieCode();
     else if (key == '#') afficherChoixCasier();
-  } else if (etat == SAISIE_CODE) {
-    if (key == '#') afficherChoixCasier();
+  } 
+  
+  else if (etat == SAISIE_CODE) {
+    if (key == '#') {
+      afficherChoixCasier();
+    } 
     else if (key == '*') {
+      // Validation du code
       lcd.clear();
       if (codeSaisi == codes[casierSelectionne]) {
         ouvrirCasier(casierSelectionne);
@@ -269,19 +243,21 @@ void loop() {
         lcd.setCursor(0, 0);
         lcd.print("Code faux");
         lcd.setCursor(0, 1);
-        lcd.print("Appuyez #");
+        lcd.print("Reessayer");
         delay(2000);
         afficherChoixCasier();
       }
-    } else if (codeSaisi.length() < longueurCode) {
-      int pos = codeSaisi.length();
+    } 
+    else if (codeSaisi.length() < longueurCode) {
+      // Saisie d'un chiffre
       codeSaisi += key;
-      tempsTouches[pos] = millis();
-      masque[pos] = false;
-      lcd.setCursor(pos, 1);
-      lcd.print(key);
+      // Affichage DIRECT du chiffre (plus d'étoiles)
+      lcd.setCursor(codeSaisi.length() - 1, 1);
+      lcd.print(key); 
     }
-  } else if (etat == SAISIE_ADMIN) {
+  } 
+  
+  else if (etat == SAISIE_ADMIN) {
     if (key == '#') afficherChoixCasier();
     else if (key == '*') {
       if (codeAdminSaisi == codeAdmin) {
@@ -292,20 +268,23 @@ void loop() {
         delay(2000);
         afficherChoixCasier();
       }
-    } else if (codeAdminSaisi.length() < longueurAdmin) {
-      int pos = codeAdminSaisi.length();
+    } 
+    else if (codeAdminSaisi.length() < longueurAdmin) {
       codeAdminSaisi += key;
-      tempsAdmin[pos] = millis();
-      masqueAdmin[pos] = false;
-      lcd.setCursor(6 + pos, 1);
+      // Affichage DIRECT du code admin aussi
+      lcd.setCursor(6 + codeAdminSaisi.length() - 1, 1);
       lcd.print(key);
     }
-  } else if (etat == ADMIN_MENU) {
+  } 
+  
+  else if (etat == ADMIN_MENU) {
     if (key >= '1' && key <= '3') {
       adminCasierSelectionne = key - '1';
       afficherAdminCasier(adminCasierSelectionne);
     } else if (key == '#') afficherChoixCasier();
-  } else if (etat == ADMIN_CASIER) {
+  } 
+  
+  else if (etat == ADMIN_CASIER) {
     if (key == '*') {
       ouvrirCasier(adminCasierSelectionne);
       afficherMenuAdmin();
