@@ -2,21 +2,22 @@
 
 #define MAX_DISTANCE 200
 
-// Sensors
+// Grove sensors (1 pin each)
 NewPing leftSensor(8, 8, MAX_DISTANCE);
 NewPing rightSensor(5, 5, MAX_DISTANCE);
 NewPing frontSensor(6, 6, MAX_DISTANCE);
 NewPing backSensor(7, 7, MAX_DISTANCE);
 
-int readAvg(NewPing &sensor) {
-  int total = 0;
+// Function to get stable reading
+int readSensor(NewPing &sensor) {
 
-  for(int i = 0; i < 5; i++) {   // average 5 readings
-    total += sensor.ping_cm();
-    delay(10);
-  }
+  delay(40); // avoid ultrasonic interference
 
-  return total / 5;
+  unsigned int uS = sensor.ping_median(5);
+
+  if(uS == 0) return MAX_DISTANCE;
+
+  return uS / US_ROUNDTRIP_CM;
 }
 
 void setup() {
@@ -25,10 +26,10 @@ void setup() {
 
 void loop() {
 
-  int left = readAvg(leftSensor);
-  int right = readAvg(rightSensor);
-  int front = readAvg(frontSensor);
-  int back = readAvg(backSensor);
+  int left  = readSensor(leftSensor);
+  int right = readSensor(rightSensor);
+  int front = readSensor(frontSensor);
+  int back  = readSensor(backSensor);
 
   int diff = abs(left - right);
 
@@ -41,21 +42,22 @@ void loop() {
   Serial.print(" B:");
   Serial.println(back);
 
-  // -------- OBSTACLE --------
-  if(front > 0 && front < 15) {
+  // OBSTACLE FRONT
+  if(front < 15) {
     Serial.println("OBSTACLE FRONT → avoid");
   }
 
-  else if(back > 0 && back < 15) {
+  // OBSTACLE BACK
+  else if(back < 15) {
     Serial.println("OBSTACLE BACK → move forward");
   }
 
-  // -------- INTERSECTION --------
+  // INTERSECTION
   else if(diff > 50) {
     Serial.println("INTERSECTION DETECTED");
   }
 
-  // -------- CENTERING --------
+  // CENTERING
   else {
 
     if(diff < 4) {
