@@ -1,0 +1,42 @@
+import cv2
+import cv2.aruco as aruco
+import requests
+import time
+
+# L'ESP32 va créer son propre WiFi. On se connecte dessus avec le tel.
+# L'IP par défaut d'un ESP32 en mode Point d'Accès est souvent :
+ESP32_URL = "http://192.168.4.1/action?cmd="
+
+aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
+parameters = aruco.DetectorParameters()
+
+# Utilise la caméra frontale ou arrière (0 ou 1)
+cap = cv2.VideoCapture(0)
+
+print("Analyse ArUco en direct sur le téléphone...")
+
+while True:
+    ret, frame = cap.read()
+    if not ret: break
+
+    # Ultra important pour ton Alcatel : petite résolution !
+    small = cv2.resize(frame, (320, 240))
+    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+    
+    corners, ids, _ = aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
+
+    if ids is not None:
+        id_val = ids[0][0]
+        print(f"ID: {id_val}")
+        
+        # Envoi direct à l'ESP32 sans fil
+        try:
+            if id_val == 1: requests.get(ESP32_URL + "AVANCER", timeout=0.1)
+            if id_val == 2: requests.get(ESP32_URL + "STOP", timeout=0.1)
+        except:
+            pass # On ignore si l'ESP est occupé
+
+    cv2.imshow("Robot Cam", small)
+    if cv2.waitKey(1) & 0xFF == ord('q'): break
+
+cap.release()

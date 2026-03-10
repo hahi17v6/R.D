@@ -1,0 +1,29 @@
+/*
+ * Test Module Bouton Grove sur A0
+ * Affiche l'état dans le Moniteur Série (Loupe)
+ */
+
+const int buttonPin = A0;
+
+void setup() {
+  // Initialisation de la communication avec l'ordinateur
+  Serial.begin(9600);
+  
+  // Configuration de la broche
+  pinMode(buttonPin, INPUT);
+}
+
+void loop() {
+  // Lecture de l'état (0 ou 1)
+  int etat = digitalRead(buttonPin);
+
+  // Affichage du résultat
+  if (etat == HIGH) {
+    Serial.println("Bouton APPUYE  (1)");
+  } else {
+    Serial.println("Bouton relache (0)");
+  }
+  
+  // Un petit délai pour ne pas faire défiler le texte trop vite
+  delay(100); 
+}

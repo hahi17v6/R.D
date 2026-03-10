@@ -1,0 +1,66 @@
+import cv2
+import cv2.aruco as aruco
+import scrcpy
+import requests
+import numpy as np
+
+# --- CONFIGURATION ---
+IP_ESP32 = "http://192.168.1.YY" # Remplace par l'IP de ton ESP32
+last_sent_id = -1
+
+# Configuration ArUco
+aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
+parameters = aruco.DetectorParameters()
+
+print("--- MODE SCRCPY TURBO ACTIVÉ ---")
+
+def envoyer_ordre(commande):
+    try:
+        requests.get(f"{IP_ESP32}/action?cmd={commande}", timeout=0.1)
+        print(f">>> Ordre envoyé : {commande}")
+    except:
+        print("Erreur : ESP32 injoignable")
+
+# 1. Initialisation du client Scrcpy
+# max_size=480 réduit la résolution à la source pour économiser le processeur du tel
+client = scrcpy.Client(max_size=480, bit_rate=2000000)
+
+def on_frame(frame: np.ndarray):
+    global last_sent_id
+    if frame is None:
+        return
+
+    # On travaille sur une version petite pour la vitesse
+    small_frame = cv2.resize(frame, (320, 180))
+    gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
+    
+    corners, ids, _ = aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
+
+    if ids is not None:
+        aruco.drawDetectedMarkers(small_frame, corners, ids)
+        current_id = ids[0][0]
+        
+        # Logique d'envoi à l'ESP32 (seulement si l'ID change pour éviter le spam)
+        if current_id != last_sent_id:
+            if current_id == 1: envoyer_ordre("AVANCER")
+            elif current_id == 2: envoyer_ordre("STOP")
+            last_sent_id = current_id
+    else:
+        last_sent_id = -1
+
+    cv2.imshow("Vision Temps Réel (Scrcpy)", small_frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        client.stop()
+
+# 2. Lancement du flux
+client.add_listener(scrcpy.EVENT_FRAME, on_frame)
+client.start(threaded=True)
+
+# Maintenir le script en vie
+try:
+    while client.alive:
+        pass
+except KeyboardInterrupt:
+    client.stop()
+
+cv2.destroyAllWindows()
