@@ -1,0 +1,1446 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RoboLivraison</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --surface2: #22263a;
+  --border: #2e3348;
+  --blue: #4f8ef7;
+  --blue-dim: #1e3a6e;
+  --green: #22c55e;
+  --green-dim: #14532d;
+  --orange: #f97316;
+  --orange-dim: #431407;
+  --purple: #a78bfa;
+  --purple-dim: #2e1065;
+  --red: #ef4444;
+  --red-dim: #450a0a;
+  --yellow: #eab308;
+  --yellow-dim: #422006;
+  --text: #e2e8f0;
+  --text2: #94a3b8;
+  --text3: #4a5568;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Outfit', sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+
+/* SCREENS */
+.screen{display:none;min-height:100vh;flex-direction:column;}
+.screen.active{display:flex;}
+
+/* ===== LANDING ===== */
+#landing{
+  align-items:center;justify-content:center;
+  background: radial-gradient(ellipse 80% 50% at 50% -10%, #1e3a6e55, transparent),
+              radial-gradient(ellipse 60% 40% at 80% 80%, #14532d33, transparent),
+              var(--bg);
+  position:relative;overflow:hidden;
+}
+#landing::before{
+  content:'';position:absolute;inset:0;
+  background-image: radial-gradient(circle at 1px 1px, #2e334840 1px, transparent 0);
+  background-size:32px 32px;pointer-events:none;
+}
+.landing-inner{text-align:center;position:relative;z-index:1;padding:2rem;}
+.landing-logo{
+  display:inline-flex;align-items:center;gap:.75rem;
+  margin-bottom:2.5rem;
+}
+.logo-icon{
+  width:56px;height:56px;border-radius:14px;
+  background:linear-gradient(135deg,var(--blue),#6366f1);
+  display:flex;align-items:center;justify-content:center;font-size:1.6rem;
+  box-shadow:0 0 30px #4f8ef750;
+}
+.logo-text{font-size:1.6rem;font-weight:800;letter-spacing:-.02em;}
+.logo-text span{color:var(--blue);}
+.landing-title{font-size:2.8rem;font-weight:800;line-height:1.1;margin-bottom:.75rem;letter-spacing:-.03em;}
+.landing-title em{font-style:normal;color:var(--blue);}
+.landing-sub{color:var(--text2);font-size:1.05rem;margin-bottom:3rem;max-width:480px;margin-left:auto;margin-right:auto;}
+.landing-cards{display:flex;gap:1.25rem;justify-content:center;flex-wrap:wrap;}
+.lcard{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:1.25rem;padding:2rem 1.75rem;width:260px;cursor:pointer;
+  transition:transform .2s,box-shadow .2s,border-color .2s;
+  text-align:left;position:relative;overflow:hidden;
+}
+.lcard::before{content:'';position:absolute;inset:0;opacity:0;transition:opacity .2s;}
+.lcard:hover{transform:translateY(-4px);}
+.lcard-staff::before{background:radial-gradient(circle at 50% 0%,#4f8ef715,transparent 70%);}
+.lcard-staff:hover{border-color:var(--blue);box-shadow:0 8px 30px #4f8ef725;}
+.lcard-staff:hover::before{opacity:1;}
+.lcard-patient::before{background:radial-gradient(circle at 50% 0%,#22c55e15,transparent 70%);}
+.lcard-patient:hover{border-color:var(--green);box-shadow:0 8px 30px #22c55e25;}
+.lcard-patient:hover::before{opacity:1;}
+.lcard-icon{
+  width:48px;height:48px;border-radius:12px;display:flex;align-items:center;
+  justify-content:center;font-size:1.4rem;margin-bottom:1.1rem;
+}
+.lcard-staff .lcard-icon{background:var(--blue-dim);}
+.lcard-patient .lcard-icon{background:var(--green-dim);}
+.lcard h3{font-size:1rem;font-weight:700;margin-bottom:.4rem;}
+.lcard p{font-size:.8rem;color:var(--text2);line-height:1.5;}
+.lcard-arrow{
+  position:absolute;bottom:1.25rem;right:1.25rem;
+  color:var(--text3);font-size:1.2rem;transition:color .2s,transform .2s;
+}
+.lcard:hover .lcard-arrow{color:var(--text);transform:translateX(3px);}
+
+/* ===== AUTH ===== */
+#auth{
+  align-items:center;justify-content:center;
+  background: radial-gradient(ellipse 60% 40% at 30% 20%, #1e3a6e33, transparent),
+              var(--bg);
+}
+.auth-box{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:1.5rem;padding:2.5rem;width:100%;max-width:400px;
+  box-shadow:0 25px 50px rgba(0,0,0,.4);
+}
+.auth-back{
+  display:flex;align-items:center;gap:.4rem;color:var(--text2);font-size:.85rem;
+  cursor:pointer;margin-bottom:1.5rem;background:none;border:none;font-family:var(--sans);
+  transition:color .15s;
+}
+.auth-back:hover{color:var(--text);}
+.auth-header{margin-bottom:2rem;}
+.auth-icon{
+  width:52px;height:52px;border-radius:14px;display:flex;align-items:center;
+  justify-content:center;font-size:1.5rem;margin-bottom:1rem;
+}
+.auth-staff .auth-icon{background:var(--blue-dim);box-shadow:0 0 20px #4f8ef730;}
+.auth-patient .auth-icon{background:var(--green-dim);box-shadow:0 0 20px #22c55e30;}
+.auth-title{font-size:1.4rem;font-weight:800;margin-bottom:.25rem;}
+.auth-sub{font-size:.85rem;color:var(--text2);}
+.form-group{margin-bottom:1.1rem;}
+.form-label{display:block;font-size:.78rem;font-weight:600;color:var(--text2);margin-bottom:.4rem;letter-spacing:.04em;text-transform:uppercase;}
+.form-input,.form-select{
+  width:100%;padding:.7rem 1rem;background:var(--bg);border:1px solid var(--border);
+  border-radius:.625rem;font-size:.9rem;font-family:var(--sans);color:var(--text);
+  outline:none;transition:border-color .15s,box-shadow .15s;
+}
+.form-input:focus,.form-select:focus{border-color:var(--blue);box-shadow:0 0 0 3px #4f8ef720;}
+.form-input.pin{font-family:var(--mono);font-size:1.4rem;letter-spacing:.3em;text-align:center;}
+.form-input::placeholder{color:var(--text3);}
+.btn-auth{
+  width:100%;padding:.8rem;border-radius:.75rem;font-size:.95rem;font-weight:700;
+  border:none;cursor:pointer;font-family:var(--sans);transition:all .15s;margin-top:.5rem;
+}
+.btn-auth-staff{background:linear-gradient(135deg,var(--blue),#6366f1);color:white;}
+.btn-auth-staff:hover{filter:brightness(1.1);transform:translateY(-1px);}
+.btn-auth-patient{background:linear-gradient(135deg,var(--green),#16a34a);color:white;}
+.btn-auth-patient:hover{filter:brightness(1.1);transform:translateY(-1px);}
+.auth-error{
+  background:var(--red-dim);border:1px solid var(--red);color:var(--red);
+  border-radius:.5rem;padding:.6rem .875rem;font-size:.8rem;margin-top:.75rem;display:none;
+}
+.auth-hint{
+  background:var(--surface2);border:1px solid var(--border);border-radius:.625rem;
+  padding:.75rem 1rem;font-size:.78rem;color:var(--text2);margin-top:1rem;line-height:1.6;
+}
+.auth-hint strong{color:var(--text);}
+/* PIN pads */
+.pin-display{
+  display:flex;gap:.75rem;justify-content:center;margin-bottom:1.25rem;
+}
+.pin-dot{
+  width:16px;height:16px;border-radius:50%;border:2px solid var(--border);
+  transition:all .15s;background:transparent;
+}
+.pin-dot.filled{background:var(--green);border-color:var(--green);box-shadow:0 0 8px #22c55e60;}
+.pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;}
+.pin-key{
+  padding:.875rem;border-radius:.625rem;background:var(--surface2);border:1px solid var(--border);
+  font-size:1.1rem;font-weight:600;cursor:pointer;transition:all .15s;
+  font-family:var(--mono);color:var(--text);
+}
+.pin-key:hover{background:var(--border);border-color:var(--text3);}
+.pin-key:active{transform:scale(.95);}
+.pin-key.del{color:var(--text2);font-size:.9rem;}
+
+/* ===== APP SHELL ===== */
+#app{background:var(--bg);}
+.app-topbar{
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:.75rem 1.5rem;display:flex;align-items:center;gap:1rem;
+  position:sticky;top:0;z-index:100;
+}
+.topbar-back{
+  width:32px;height:32px;border-radius:.5rem;display:flex;align-items:center;justify-content:center;
+  background:var(--surface2);border:1px solid var(--border);cursor:pointer;font-size:1rem;
+  color:var(--text2);transition:all .15s;
+}
+.topbar-back:hover{border-color:var(--text2);color:var(--text);}
+.topbar-info{flex:1;}
+.topbar-title{font-size:.92rem;font-weight:700;}
+.topbar-sub{font-size:.73rem;color:var(--text2);}
+.btn-new{
+  display:flex;align-items:center;gap:.4rem;padding:.5rem 1rem;
+  background:var(--blue);color:white;border:none;border-radius:.625rem;
+  font-size:.83rem;font-weight:700;cursor:pointer;font-family:var(--sans);
+  transition:all .15s;white-space:nowrap;
+}
+.btn-new:hover{filter:brightness(1.1);}
+
+/* TABS */
+.app-tabs{
+  background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;padding:0 1.5rem;gap:.1rem;overflow-x:auto;
+}
+.app-tab{
+  padding:.7rem 1rem;font-size:.82rem;font-weight:600;color:var(--text2);
+  border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;
+  transition:color .15s,border-color .15s;white-space:nowrap;font-family:var(--sans);
+  display:flex;align-items:center;gap:.35rem;
+}
+.app-tab.active{color:var(--blue);border-bottom-color:var(--blue);}
+.nbadge{
+  background:var(--red);color:white;border-radius:999px;
+  font-size:.6rem;padding:.05rem .3rem;font-weight:800;min-width:15px;text-align:center;
+}
+
+/* ESP STRIP */
+.esp-strip{
+  display:flex;align-items:center;gap:.6rem;padding:.4rem 1.25rem;
+  font-size:.75rem;border-bottom:1px solid var(--border);background:var(--surface);
+}
+.esd{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.es-connected .esd{background:var(--green);animation:blink 2s infinite;}
+.es-disconnected .esd{background:var(--red);}
+.es-connecting .esd{background:var(--yellow);animation:blink .7s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.es-connected .esl{color:var(--green);font-weight:700;}
+.es-disconnected .esl{color:var(--red);font-weight:700;}
+.es-connecting .esl{color:var(--yellow);font-weight:700;}
+.esp-detail{color:var(--text2);font-family:var(--mono);font-size:.72rem;}
+.esp-cfg-btn{
+  margin-left:auto;background:var(--surface2);border:1px solid var(--border);
+  border-radius:.375rem;padding:.2rem .55rem;font-size:.72rem;cursor:pointer;
+  font-family:var(--sans);color:var(--text2);transition:all .15s;
+}
+.esp-cfg-btn:hover{border-color:var(--text2);color:var(--text);}
+
+/* CONTENT */
+.tab-pane{display:none;flex:1;overflow-y:auto;padding:1.25rem 1.5rem;}
+.tab-pane.active{display:block;}
+.content-max{max-width:1050px;margin:0 auto;}
+
+/* STATS */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;margin-bottom:1.25rem;}
+.scard{
+  background:var(--surface);border:1px solid var(--border);border-radius:1rem;
+  padding:1rem 1.25rem;cursor:pointer;transition:border-color .15s;
+}
+.scard.sel{border-color:var(--blue);}
+.scard-lbl{font-size:.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.3rem;}
+.scard-val{font-size:1.75rem;font-weight:800;font-family:var(--mono);}
+.sc-total .scard-val{color:var(--text);}
+.sc-wait .scard-val{color:var(--yellow);}
+.sc-go .scard-val{color:var(--blue);}
+.sc-done .scard-val{color:var(--green);}
+
+/* TABLE */
+.data-table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:1rem;overflow:hidden;}
+table{width:100%;border-collapse:collapse;}
+thead th{padding:.7rem 1rem;text-align:left;font-size:.72rem;font-weight:700;
+  color:var(--text2);border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.05em;}
+tbody tr{border-bottom:1px solid var(--border);transition:background .1s;}
+tbody tr:last-child{border-bottom:none;}
+tbody tr:hover{background:var(--surface2);}
+tbody td{padding:.8rem 1rem;font-size:.85rem;vertical-align:middle;}
+.res-name{font-weight:600;font-size:.88rem;}
+.res-room{font-size:.73rem;color:var(--text2);display:flex;align-items:center;gap:.2rem;}
+.tag{display:inline-block;padding:.18rem .5rem;border-radius:.375rem;font-size:.7rem;font-weight:700;white-space:nowrap;}
+.tag-r{background:var(--orange-dim);color:var(--orange);border:1px solid #92400e;}
+.tag-m{background:var(--purple-dim);color:var(--purple);border:1px solid #4c1d95;}
+.tag-a{background:var(--surface2);color:var(--text2);border:1px solid var(--border);}
+.sbadge{display:inline-flex;align-items:center;gap:.25rem;padding:.25rem .65rem;border-radius:999px;font-size:.72rem;font-weight:700;}
+.sb-done{background:var(--green-dim);color:var(--green);}
+.sb-go{background:var(--blue-dim);color:var(--blue);}
+.sb-wait{background:var(--yellow-dim);color:var(--yellow);}
+.sb-cancel{background:var(--red-dim);color:var(--red);}
+.mono{font-family:var(--mono);font-size:.8rem;}
+.link{background:none;border:none;color:var(--blue);cursor:pointer;font-size:.82rem;font-weight:600;font-family:var(--sans);}
+.link:hover{text-decoration:underline;}
+
+/* ROBOTS */
+.robots-row{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;}
+.rbot-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:.875rem;padding:1rem;
+}
+.rbot-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem;}
+.rbot-name{font-weight:700;font-size:.87rem;display:flex;align-items:center;gap:.4rem;}
+.rbot-st{font-size:.7rem;font-weight:700;padding:.18rem .5rem;border-radius:.375rem;}
+.rst-mis{background:var(--blue-dim);color:var(--blue);}
+.rst-ok{background:var(--green-dim);color:var(--green);}
+.rst-off{background:var(--surface2);color:var(--text3);}
+.rst-chg{background:var(--yellow-dim);color:var(--yellow);}
+.rbot-miss{font-size:.77rem;color:var(--text2);}
+.batt-row{display:flex;align-items:center;gap:.5rem;margin-top:.5rem;font-size:.72rem;color:var(--text2);}
+.batt-bar{flex:1;height:3px;background:var(--border);border-radius:2px;}
+.batt-fill{height:100%;border-radius:2px;transition:width .5s;}
+
+/* ACTIVE ORDERS */
+.ao-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:.875rem;
+  padding:1rem;margin-bottom:.75rem;
+}
+.ao-head{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem;}
+.ao-info{font-size:.8rem;color:var(--text2);margin-bottom:.6rem;}
+.prog-row{display:flex;justify-content:space-between;font-size:.72rem;color:var(--text2);margin-bottom:.3rem;}
+.prog-bar{height:5px;background:var(--border);border-radius:3px;overflow:hidden;}
+.prog-fill{height:100%;border-radius:3px;transition:width .5s;background:linear-gradient(90deg,var(--blue),var(--purple));}
+.steps-row{display:flex;justify-content:space-between;margin-top:.75rem;}
+.step{text-align:center;flex:1;}
+.step-dot{width:22px;height:22px;border-radius:50%;margin:0 auto .25rem;display:flex;align-items:center;justify-content:center;font-size:.65rem;}
+.s-done .step-dot{background:var(--green);color:white;}
+.s-act .step-dot{background:var(--blue);color:white;animation:stepPulse 1.5s infinite;}
+.s-pend .step-dot{background:var(--surface2);color:var(--text3);}
+@keyframes stepPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 #4f8ef740}50%{transform:scale(1.1);box-shadow:0 0 0 5px #4f8ef700}}
+.step-lbl{font-size:.68rem;color:var(--text2);}
+.step-t{font-family:var(--mono);font-size:.67rem;color:var(--text);}
+.assigned{font-size:.73rem;color:var(--text2);display:flex;align-items:center;gap:.3rem;margin-top:.5rem;}
+
+/* HISTORY FILTER */
+.hf-row{display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap;}
+.hf-btn{
+  padding:.3rem .75rem;border-radius:999px;font-size:.78rem;font-weight:600;
+  cursor:pointer;border:1px solid var(--border);background:var(--surface);
+  color:var(--text2);font-family:var(--sans);transition:all .15s;
+}
+.hf-btn.active{background:var(--blue);color:white;border-color:var(--blue);}
+
+/* NOTIFS */
+.notif-item{
+  padding:.875rem 1rem;border-bottom:1px solid var(--border);
+  display:flex;gap:.75rem;cursor:pointer;transition:background .1s;
+}
+.notif-item:hover{background:var(--surface2);}
+.notif-item:last-child{border-bottom:none;}
+.notif-item.unread{background:#4f8ef708;}
+.ni-icon{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;}
+.ni-body{flex:1;}
+.ni-title{font-size:.85rem;font-weight:700;}
+.ni-msg{font-size:.78rem;color:var(--text2);margin-top:.15rem;}
+.ni-time{font-size:.7rem;color:var(--text3);font-family:var(--mono);margin-top:.2rem;}
+.ni-dot{width:7px;height:7px;background:var(--blue);border-radius:50%;margin-top:.4rem;flex-shrink:0;box-shadow:0 0 6px var(--blue);}
+
+/* MODALS */
+.modal-ov{
+  position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;
+  display:none;align-items:center;justify-content:center;padding:1rem;
+  backdrop-filter:blur(6px);
+}
+.modal-ov.open{display:flex;}
+.modal{
+  background:var(--surface);border:1px solid var(--border);border-radius:1.25rem;
+  width:100%;max-width:480px;box-shadow:0 30px 60px rgba(0,0,0,.5);max-height:90vh;overflow-y:auto;
+}
+.modal-hd{padding:1.25rem 1.5rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.modal-hd h3{font-size:.95rem;font-weight:800;}
+.modal-x{background:none;border:none;cursor:pointer;color:var(--text2);font-size:1.4rem;line-height:1;transition:color .15s;}
+.modal-x:hover{color:var(--text);}
+.modal-bd{padding:1.5rem;}
+.modal-ft{padding:1rem 1.5rem;border-top:1px solid var(--border);display:flex;gap:.75rem;justify-content:flex-end;}
+.btn-p{
+  padding:.55rem 1.1rem;border-radius:.625rem;font-size:.83rem;font-weight:700;
+  background:var(--blue);color:white;border:none;cursor:pointer;font-family:var(--sans);transition:all .15s;
+}
+.btn-p:hover{filter:brightness(1.1);}
+.btn-s{
+  padding:.55rem 1.1rem;border-radius:.625rem;font-size:.83rem;font-weight:700;
+  background:var(--surface2);color:var(--text);border:1px solid var(--border);
+  cursor:pointer;font-family:var(--sans);transition:all .15s;
+}
+.btn-s:hover{border-color:var(--text2);}
+.btn-danger{background:var(--red-dim);color:var(--red);border:1px solid var(--red);padding:.55rem 1.1rem;border-radius:.625rem;font-size:.83rem;font-weight:700;cursor:pointer;font-family:var(--sans);}
+.form-row2{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;}
+.form-textarea{
+  width:100%;padding:.7rem 1rem;background:var(--bg);border:1px solid var(--border);
+  border-radius:.625rem;font-size:.87rem;font-family:var(--sans);color:var(--text);
+  outline:none;resize:vertical;min-height:70px;transition:border-color .15s;
+}
+.form-textarea:focus{border-color:var(--blue);}
+.detail-row{display:flex;justify-content:space-between;align-items:center;padding:.6rem 0;border-bottom:1px solid var(--border);font-size:.85rem;}
+.detail-row:last-child{border-bottom:none;}
+.dk{color:var(--text2);font-size:.78rem;}
+.dv{font-weight:600;}
+.tl-item{display:flex;gap:.75rem;margin-bottom:.6rem;}
+.tl-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:3px;}
+.tl-done-d{background:var(--green);}
+.tl-act-d{background:var(--blue);animation:stepPulse 1.5s infinite;}
+.tl-pend-d{background:var(--surface2);}
+.tl-lbl{font-size:.82rem;font-weight:600;}
+.tl-t{font-size:.73rem;color:var(--text2);font-family:var(--mono);}
+
+/* PATIENT SPACE */
+.pt-welcome{
+  background:linear-gradient(135deg,var(--green-dim),var(--surface2));
+  border:1px solid var(--border);border-radius:1rem;padding:1.25rem;
+  margin-bottom:1rem;display:flex;align-items:center;gap:1rem;
+}
+.pt-avatar{
+  width:52px;height:52px;border-radius:50%;background:var(--green-dim);
+  display:flex;align-items:center;justify-content:center;font-size:1.4rem;
+  border:2px solid var(--green);flex-shrink:0;
+}
+.pt-room-big{font-size:1.1rem;font-weight:800;}
+.pt-bldg{font-size:.82rem;color:var(--text2);}
+.po-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:.875rem;
+  margin-bottom:.75rem;overflow:hidden;
+}
+.po-head{padding:.875rem 1rem;display:flex;align-items:center;justify-content:space-between;}
+.po-body{padding:0 1rem 1rem;}
+.po-desc{font-size:.87rem;font-weight:600;}
+.po-meta{font-size:.75rem;color:var(--text2);margin-top:.2rem;}
+.po-confirm{
+  background:var(--green-dim);border:1px solid var(--green);border-radius:.5rem;
+  padding:.5rem .75rem;font-size:.78rem;color:var(--green);margin-top:.75rem;
+  display:flex;align-items:center;gap:.4rem;
+}
+.po-prog{margin-top:.5rem;}
+.po-prog-bar{height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:.25rem;}
+.po-prog-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--blue),var(--purple));transition:width .5s;}
+.new-cmd-section{
+  background:var(--surface);border:1px solid var(--border);border-radius:.875rem;
+  padding:1.1rem;margin-top:1rem;
+}
+.new-cmd-toggle{
+  display:flex;align-items:center;justify-content:space-between;cursor:pointer;
+}
+.new-cmd-toggle span{font-size:.9rem;font-weight:700;}
+.new-cmd-btn{
+  background:var(--green-dim);border:1px solid var(--green);color:var(--green);
+  border-radius:.5rem;padding:.3rem .65rem;font-size:.78rem;font-weight:700;
+  cursor:pointer;font-family:var(--sans);transition:all .15s;
+}
+.new-cmd-btn:hover{background:var(--green);color:white;}
+.new-cmd-form{margin-top:1rem;display:none;}
+.new-cmd-form.open{display:block;}
+
+/* TOAST */
+.toast-wrap{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);z-index:300;display:flex;flex-direction:column;gap:.4rem;align-items:center;pointer-events:none;}
+.toast{
+  background:var(--surface);border:1px solid var(--border);color:var(--text);
+  padding:.6rem 1.1rem;border-radius:.75rem;font-size:.82rem;font-weight:600;
+  box-shadow:0 8px 24px rgba(0,0,0,.4);animation:tUp .25s ease;white-space:nowrap;
+}
+.toast.ok{border-color:var(--green);background:var(--green-dim);color:var(--green);}
+.toast.err{border-color:var(--red);background:var(--red-dim);color:var(--red);}
+.toast.info{border-color:var(--blue);background:var(--blue-dim);color:var(--blue);}
+@keyframes tUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* ESP MODAL */
+.code-block{
+  background:var(--bg);border:1px solid var(--border);border-radius:.5rem;
+  padding:.75rem;font-family:var(--mono);font-size:.72rem;color:var(--text2);
+  line-height:1.6;overflow-x:auto;white-space:pre;margin-top:.5rem;
+}
+.section-hd{font-size:.85rem;font-weight:700;margin-bottom:.75rem;display:flex;align-items:center;gap:.4rem;}
+
+@media(max-width:680px){
+  .stats-grid{grid-template-columns:repeat(2,1fr);}
+  .robots-row{grid-template-columns:1fr;}
+  .form-row2{grid-template-columns:1fr;}
+  .landing-title{font-size:2rem;}
+}
+</style>
+</head>
+<body>
+
+<!-- ======== LANDING ======== -->
+<div id="landing" class="screen active">
+  <div class="landing-inner">
+    <div class="landing-logo">
+      <div class="logo-icon">🤖</div>
+      <div class="logo-text">Robo<span>Livraison</span></div>
+    </div>
+    <h1 class="landing-title">Système de livraison<br><em>automatisé</em></h1>
+    <p class="landing-sub">Gestion intelligente des livraisons de repas et médicaments par robot autonome</p>
+    <div class="landing-cards">
+      <div class="lcard lcard-staff" onclick="showAuth('staff')">
+        <div class="lcard-icon">🛡️</div>
+        <h3>Espace Personnel</h3>
+        <p>Gestion des commandes, suivi des robots et administration du système</p>
+        <div class="lcard-arrow">›</div>
+      </div>
+      <div class="lcard lcard-patient" onclick="showAuth('patient')">
+        <div class="lcard-icon">🏠</div>
+        <h3>Espace Résident</h3>
+        <p>Accédez à votre espace personnel pour suivre vos livraisons</p>
+        <div class="lcard-arrow">›</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======== AUTH ======== -->
+<div id="auth" class="screen">
+  <!-- STAFF LOGIN -->
+  <div id="auth-staff" style="display:none;width:100%;display:flex;align-items:center;justify-content:center;">
+    <div class="auth-box auth-staff">
+      <button class="auth-back" onclick="goLanding()">← Retour</button>
+      <div class="auth-header">
+        <div class="auth-icon">🛡️</div>
+        <div class="auth-title">Espace Personnel</div>
+        <div class="auth-sub">Connexion sécurisée – Personnel soignant</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Identifiant</label>
+        <input class="form-input" type="text" id="staff-user" placeholder="admin" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Mot de passe</label>
+        <input class="form-input" type="password" id="staff-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')loginStaff()">
+      </div>
+      <button class="btn-auth btn-auth-staff" onclick="loginStaff()">Se connecter →</button>
+      <div class="auth-error" id="staff-err">Identifiant ou mot de passe incorrect</div>
+      <div class="auth-hint">
+        <strong>Démo :</strong> admin / <span style="font-family:var(--mono)">robot2024</span><br>
+        Les identifiants sont configurés dans le code Arduino de l'ESP32.
+      </div>
+    </div>
+  </div>
+
+  <!-- PATIENT LOGIN -->
+  <div id="auth-patient" style="display:none;width:100%;align-items:center;justify-content:center;">
+    <div class="auth-box auth-patient">
+      <button class="auth-back" onclick="goLanding()">← Retour</button>
+      <div class="auth-header">
+        <div class="auth-icon">🏠</div>
+        <div class="auth-title">Espace Résident</div>
+        <div class="auth-sub">Entrez votre numéro de chambre et votre code PIN</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Numéro de chambre</label>
+        <select class="form-select" id="patient-room">
+          <option value="">-- Sélectionnez --</option>
+          <option value="101">Chambre 101 – Bâtiment A</option>
+          <option value="103">Chambre 103 – Bâtiment A</option>
+          <option value="205">Chambre 205 – Bâtiment B</option>
+          <option value="207">Chambre 207 – Bâtiment B</option>
+          <option value="302">Chambre 302 – Bâtiment A</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" style="text-align:center;display:block;">Code PIN</label>
+        <div class="pin-display" id="pin-display">
+          <div class="pin-dot" id="pd0"></div>
+          <div class="pin-dot" id="pd1"></div>
+          <div class="pin-dot" id="pd2"></div>
+          <div class="pin-dot" id="pd3"></div>
+        </div>
+        <div class="pin-pad" id="pin-pad">
+          <button class="pin-key" onclick="pinKey('1')">1</button>
+          <button class="pin-key" onclick="pinKey('2')">2</button>
+          <button class="pin-key" onclick="pinKey('3')">3</button>
+          <button class="pin-key" onclick="pinKey('4')">4</button>
+          <button class="pin-key" onclick="pinKey('5')">5</button>
+          <button class="pin-key" onclick="pinKey('6')">6</button>
+          <button class="pin-key" onclick="pinKey('7')">7</button>
+          <button class="pin-key" onclick="pinKey('8')">8</button>
+          <button class="pin-key" onclick="pinKey('9')">9</button>
+          <button class="pin-key del" onclick="pinKey('clear')">⌫ Effacer</button>
+          <button class="pin-key" onclick="pinKey('0')">0</button>
+          <button class="pin-key" onclick="pinKey('ok')" style="background:var(--green-dim);color:var(--green);border-color:#14532d;">OK ✓</button>
+        </div>
+      </div>
+      <div class="auth-error" id="patient-err">Chambre ou code PIN incorrect</div>
+      <div class="auth-hint">
+        <strong>Codes PIN de démo :</strong><br>
+        Ch.101 → <span style="font-family:var(--mono)">1234</span> &nbsp;|&nbsp;
+        Ch.205 → <span style="font-family:var(--mono)">5678</span><br>
+        Ch.302 → <span style="font-family:var(--mono)">9012</span> &nbsp;|&nbsp;
+        Ch.103 → <span style="font-family:var(--mono)">3456</span><br>
+        Ch.207 → <span style="font-family:var(--mono)">7890</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======== STAFF APP ======== -->
+<div id="app" class="screen">
+  <div id="esp-strip" class="esp-strip es-disconnected">
+    <div class="esd"></div>
+    <span class="esl" id="esp-lbl">ESP32 Déconnecté</span>
+    <span class="esp-detail" id="esp-det"></span>
+    <button class="esp-cfg-btn" onclick="openModal('m-esp')">⚙ ESP32</button>
+  </div>
+  <div class="app-topbar">
+    <div class="topbar-back" onclick="logout()" title="Déconnexion">⏏</div>
+    <div class="topbar-info">
+      <div class="topbar-title">RoboLivraison</div>
+      <div class="topbar-sub" id="staff-label">Espace Personnel</div>
+    </div>
+    <button class="btn-new" onclick="openModal('m-new')">＋ Nouvelle commande</button>
+  </div>
+  <div class="app-tabs">
+    <button class="app-tab active" onclick="switchTab('dash')">📊 Tableau de bord</button>
+    <button class="app-tab" onclick="switchTab('rt')">📡 Temps réel</button>
+    <button class="app-tab" onclick="switchTab('hist')">🕐 Historique</button>
+    <button class="app-tab" onclick="switchTab('notifs')" id="nt-btn">🔔 Notifications <span class="nbadge" id="nc">0</span></button>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="tp-dash" class="tab-pane active">
+    <div class="content-max">
+      <div class="stats-grid">
+        <div class="scard sc-total sel" onclick="filterDash('all')"><div class="scard-lbl">Total</div><div class="scard-val" id="st-all">0</div></div>
+        <div class="scard sc-wait" onclick="filterDash('En attente')"><div class="scard-lbl">En attente</div><div class="scard-val" id="st-wait">0</div></div>
+        <div class="scard sc-go" onclick="filterDash('En cours')"><div class="scard-lbl">En cours</div><div class="scard-val" id="st-go">0</div></div>
+        <div class="scard sc-done" onclick="filterDash('Livrée')"><div class="scard-lbl">Livrées</div><div class="scard-val" id="st-done">0</div></div>
+      </div>
+      <div class="data-table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Chambre</th><th>Type</th><th>Description</th><th>Statut</th><th>Heure</th><th></th></tr></thead>
+          <tbody id="dash-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- REAL TIME -->
+  <div id="tp-rt" class="tab-pane">
+    <div class="content-max">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:1rem;padding:1.25rem;margin-bottom:1rem;">
+        <div class="section-hd">🗺️ Position du robot en temps réel</div>
+        <div style="display:flex;align-items:center;justify-content:center;min-height:160px;background:var(--surface2);border-radius:.625rem;overflow:hidden;">
+          <canvas id="map-canvas" style="max-width:100%;border-radius:.5rem;image-rendering:pixelated;"></canvas>
+          <div id="map-placeholder" style="color:var(--text2);font-size:.82rem;text-align:center;padding:2rem;">
+            🤖 En attente de position…<br><span style="font-size:.72rem">Le robot apparaît dès qu'il détecte un ArUco marker</span>
+          </div>
+        </div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:1rem;padding:1.25rem;margin-bottom:1rem;">
+        <div class="section-hd">🤖 État des robots</div>
+        <div class="robots-row" id="robots-grid"></div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:1rem;padding:1.25rem;">
+        <div class="section-hd">📡 Commandes en cours</div>
+        <div id="active-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORY -->
+  <div id="tp-hist" class="tab-pane">
+    <div class="content-max">
+      <div class="hf-row">
+        <button class="hf-btn active" onclick="hFilter('all',this)">Tout</button>
+        <button class="hf-btn" onclick="hFilter('Repas',this)">Repas</button>
+        <button class="hf-btn" onclick="hFilter('Médicament',this)">Médicament</button>
+        <button class="hf-btn" onclick="hFilter('Livrée',this)">Livrées</button>
+        <button class="hf-btn" onclick="hFilter('Annulée',this)">Annulées</button>
+      </div>
+      <div class="data-table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Chambre</th><th>Type</th><th>Description</th><th>Statut</th><th>Heure</th><th></th></tr></thead>
+          <tbody id="hist-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOTIFS -->
+  <div id="tp-notifs" class="tab-pane">
+    <div class="content-max">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:1rem;overflow:hidden;" id="notifs-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ======== PATIENT SPACE ======== -->
+<div id="patient-app" class="screen">
+  <div class="app-topbar">
+    <div class="topbar-back" onclick="logout()" title="Déconnexion">⏏</div>
+    <div class="topbar-info">
+      <div class="topbar-title">Espace Résident</div>
+      <div class="topbar-sub" id="pt-label">Mes livraisons</div>
+    </div>
+  </div>
+  <div style="padding:1.25rem 1.5rem;max-width:700px;margin:0 auto;">
+    <div class="pt-welcome">
+      <div class="pt-avatar">🏠</div>
+      <div>
+        <div class="pt-room-big" id="pt-room-display">Chambre —</div>
+        <div class="pt-bldg" id="pt-bldg-display">—</div>
+      </div>
+    </div>
+    <div id="pt-orders"></div>
+    <div class="new-cmd-section">
+      <div class="new-cmd-toggle" onclick="togglePtForm()">
+        <span>Nouvelle commande</span>
+        <button class="new-cmd-btn" id="pt-form-btn">＋ Commander</button>
+      </div>
+      <div class="new-cmd-form" id="pt-form">
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select class="form-select" id="pt-type"><option>Repas</option><option>Médicament</option><option>Autre</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <input class="form-input" type="text" id="pt-desc" placeholder="Ex: Menu végétarien…">
+        </div>
+        <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.75rem;">
+          <button class="btn-s" onclick="togglePtForm()">Annuler</button>
+          <button class="btn-p" style="background:linear-gradient(135deg,var(--green),#16a34a)" onclick="submitPtOrder()">Soumettre</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======== MODALS ======== -->
+<!-- NEW ORDER -->
+<div id="m-new" class="modal-ov">
+  <div class="modal">
+    <div class="modal-hd"><h3>＋ Nouvelle commande</h3><button class="modal-x" onclick="closeModal('m-new')">×</button></div>
+    <div class="modal-bd">
+      <div class="form-group">
+        <label class="form-label">Chambre</label>
+        <select class="form-select" id="o-room">
+          <option value="101">Chambre 101 – Bâtiment A</option>
+          <option value="103">Chambre 103 – Bâtiment A</option>
+          <option value="205">Chambre 205 – Bâtiment B</option>
+          <option value="207">Chambre 207 – Bâtiment B</option>
+          <option value="302">Chambre 302 – Bâtiment A</option>
+        </select>
+      </div>
+      <div class="form-row2">
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select class="form-select" id="o-type"><option>Repas</option><option>Médicament</option><option>Autre</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Heure prévue</label>
+          <input class="form-input" type="time" id="o-time">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <input class="form-input" type="text" id="o-desc" placeholder="Ex: Menu végétarien, 2 comprimés…">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-textarea" id="o-notes" placeholder="Informations supplémentaires…"></textarea>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn-s" onclick="closeModal('m-new')">Annuler</button>
+      <button class="btn-p" onclick="submitOrder()">✓ Créer</button>
+    </div>
+  </div>
+</div>
+
+<!-- DETAIL -->
+<div id="m-detail" class="modal-ov">
+  <div class="modal">
+    <div class="modal-hd"><h3 id="det-title">Détails</h3><button class="modal-x" onclick="closeModal('m-detail')">×</button></div>
+    <div class="modal-bd" id="det-body"></div>
+    <div class="modal-ft" id="det-ft"></div>
+  </div>
+</div>
+
+<!-- ESP32 -->
+<div id="m-esp" class="modal-ov">
+  <div class="modal">
+    <div class="modal-hd"><h3>⚙ Configuration ESP32</h3><button class="modal-x" onclick="closeModal('m-esp')">×</button></div>
+    <div class="modal-bd">
+      <div class="form-row2">
+        <div class="form-group">
+          <label class="form-label">Adresse IP</label>
+          <input class="form-input" type="text" id="esp-ip" placeholder="192.168.1.100">
+          <p style="font-size:.72rem;color:var(--text2);margin-top:.3rem">Visible dans le moniteur série Arduino</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Port WebSocket</label>
+          <input class="form-input" type="number" id="esp-port" value="81">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Extrait code Arduino (ESP32)</label>
+        <div class="code-block">#include &lt;WebSocketsServer.h&gt;
+#include &lt;WiFi.h&gt;
+#include &lt;ArduinoJson.h&gt;
+
+// Identifiants staff (à modifier !)
+const char* STAFF_USER = "admin";
+const char* STAFF_PASS = "robot2024";
+
+// PINs résidents: chambre → PIN
+const char* ROOM_PINS[][2] = {
+  {"101","1234"}, {"103","3456"},
+  {"205","5678"}, {"207","7890"},
+  {"302","9012"}
+};
+
+WebSocketsServer ws(81);
+
+void onEvent(uint8_t n, WStype_t t,
+             uint8_t* p, size_t l) {
+  if(t == WStype_TEXT){
+    StaticJsonDocument&lt;512&gt; doc;
+    deserializeJson(doc, p);
+    // action: new_order, order_started,
+    //         order_delivered, order_cancelled
+    String action = doc["action"];
+    // → piloter relais, LED, buzzer...
+  }
+}</div>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn-s" onclick="closeModal('m-esp')">Fermer</button>
+      <button class="btn-p" onclick="connectESP()">🔌 Connecter</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script>
+// ============================================================
+// DATA & STATE
+// ============================================================
+const pad = n => String(n).padStart(2,'0');
+const nowTime = () => { const d=new Date(); return pad(d.getHours())+':'+pad(d.getMinutes()); };
+
+// Staff credentials (in real use, these live in ESP32 code)
+const STAFF_CREDS = { admin:'robot2024', infirmier:'soins123' };
+
+// Room PINs — keyed by room number
+const ROOM_PINS = { '101':'1234', '103':'3456', '205':'5678', '207':'7890', '302':'9012' };
+
+// Room metadata (no names exposed)
+const ROOMS = {
+  '101': { room:'101', building:'Bâtiment A', label:'Chambre 101 – Bât. A' },
+  '103': { room:'103', building:'Bâtiment A', label:'Chambre 103 – Bât. A' },
+  '205': { room:'205', building:'Bâtiment B', label:'Chambre 205 – Bât. B' },
+  '207': { room:'207', building:'Bâtiment B', label:'Chambre 207 – Bât. B' },
+  '302': { room:'302', building:'Bâtiment A', label:'Chambre 302 – Bât. A' },
+};
+
+let currentUser = null; // { role:'staff'|'patient', room? }
+let dashFilter = 'all';
+let histFilter = 'all';
+let pinBuffer = '';
+let cmdIdx = 1;
+
+let orders = [];
+
+let robots = [
+  { name:'Robot Alpha', status:'Hors ligne', mission:'—', battery:0 },
+];
+
+let notifs = [];
+
+let ws = null, espIP='', espPort='81';
+let robotLivePos = null;   // {x, y, angle} en cellules
+let mapInfo = null;        // {width, height, cell_cm}
+
+// ============================================================
+// NAVIGATION
+// ============================================================
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function goLanding() {
+  pinBuffer = ''; updatePinDisplay();
+  document.getElementById('staff-err').style.display='none';
+  document.getElementById('patient-err').style.display='none';
+  showScreen('landing');
+}
+
+function showAuth(role) {
+  showScreen('auth');
+  document.getElementById('auth-staff').style.display = role==='staff' ? 'flex' : 'none';
+  document.getElementById('auth-patient').style.display = role==='patient' ? 'flex' : 'none';
+  if(role==='staff') document.getElementById('staff-user').focus();
+}
+
+function logout() {
+  currentUser = null;
+  disconnectESP();
+  goLanding();
+  toast('Déconnecté', 'ok');
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+function loginStaff() {
+  const user = document.getElementById('staff-user').value.trim();
+  const pass = document.getElementById('staff-pass').value;
+  const err = document.getElementById('staff-err');
+  if(STAFF_CREDS[user] && STAFF_CREDS[user] === pass) {
+    err.style.display='none';
+    currentUser = { role:'staff', name:user };
+    document.getElementById('staff-label').textContent = `Connecté : ${user}`;
+    showScreen('app');
+    initStaff();
+    toast('Bienvenue, '+user+' !', 'ok');
+    if(espIP) connectESP();
+  } else {
+    err.style.display='block';
+    document.getElementById('staff-pass').value='';
+  }
+}
+
+// PIN pad
+function pinKey(k) {
+  if(k==='clear') { pinBuffer=''; }
+  else if(k==='ok') { loginPatient(); return; }
+  else if(pinBuffer.length < 4) { pinBuffer += k; }
+  updatePinDisplay();
+  if(pinBuffer.length===4) setTimeout(loginPatient,150);
+}
+
+function updatePinDisplay() {
+  for(let i=0;i<4;i++) {
+    document.getElementById('pd'+i).classList.toggle('filled', i < pinBuffer.length);
+  }
+}
+
+function loginPatient() {
+  const room = document.getElementById('patient-room').value;
+  const err = document.getElementById('patient-err');
+  if(!room) { err.style.display='block'; err.textContent='Sélectionnez votre chambre'; pinBuffer=''; updatePinDisplay(); return; }
+  if(pinBuffer.length < 4) { err.style.display='block'; err.textContent='Entrez votre code PIN à 4 chiffres'; pinBuffer=''; updatePinDisplay(); return; }
+  if(ROOM_PINS[room] && ROOM_PINS[room] === pinBuffer) {
+    err.style.display='none';
+    currentUser = { role:'patient', room };
+    const r = ROOMS[room];
+    document.getElementById('pt-room-display').textContent = 'Chambre '+room;
+    document.getElementById('pt-bldg-display').textContent = r.building;
+    document.getElementById('pt-label').textContent = 'Chambre '+room+' – '+r.building;
+    showScreen('patient-app');
+    renderPatientOrders();
+    toast('Bienvenue, Chambre '+room, 'ok');
+  } else {
+    err.style.display='block'; err.textContent='Code PIN incorrect';
+    pinBuffer=''; updatePinDisplay();
+  }
+}
+
+// ============================================================
+// STAFF INIT
+// ============================================================
+function initStaff() {
+  renderDash(); renderRobots(); renderActive(); renderHist(); renderNotifs(); updateStats();
+  const t = new Date(); document.getElementById('o-time').value = pad(t.getHours())+':'+pad(t.getMinutes());
+  setInterval(simRT, 9000);
+}
+
+// ============================================================
+// TABS
+// ============================================================
+function switchTab(t) {
+  const tabs=['dash','rt','hist','notifs'];
+  document.querySelectorAll('.app-tab').forEach((b,i) => { b.classList.toggle('active', tabs[i]===t); });
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById('tp-'+t).classList.add('active');
+  if(t==='notifs') markRead();
+}
+
+// ============================================================
+// STATS
+// ============================================================
+function updateStats() {
+  document.getElementById('st-all').textContent = orders.length;
+  document.getElementById('st-wait').textContent = orders.filter(o=>o.status==='En attente').length;
+  document.getElementById('st-go').textContent = orders.filter(o=>o.status==='En cours').length;
+  document.getElementById('st-done').textContent = orders.filter(o=>o.status==='Livrée').length;
+  const u = notifs.filter(n=>n.unread).length;
+  const nc = document.getElementById('nc');
+  nc.textContent = u; nc.style.display = u ? 'inline' : 'none';
+}
+
+function filterDash(f) {
+  dashFilter = f;
+  document.querySelectorAll('.scard').forEach(c => c.classList.remove('sel'));
+  const idx = ['all','En attente','En cours','Livrée'].indexOf(f);
+  document.querySelectorAll('.scard')[idx<0?0:idx].classList.add('sel');
+  renderDash();
+}
+
+// ============================================================
+// TABLE – staff view shows room numbers, NOT names
+// ============================================================
+function renderDash() {
+  const list = dashFilter==='all' ? orders : orders.filter(o=>o.status===dashFilter);
+  document.getElementById('dash-tbody').innerHTML = list.map(o => `
+    <tr>
+      <td class="mono">${o.id}</td>
+      <td><div class="res-name">Ch. ${o.room}</div><div class="res-room">📍 ${ROOMS[o.room]?.building||''}</div></td>
+      <td><span class="tag ${tc(o.type)}">${o.type}</span></td>
+      <td>${o.desc}</td>
+      <td>${sb(o.status)}</td>
+      <td class="mono">${o.time}</td>
+      <td><button class="link" onclick="openDetail('${o.id}')">Détails</button></td>
+    </tr>`).join('');
+}
+
+function renderHist() {
+  let list = [...orders].reverse();
+  if(histFilter!=='all') list = list.filter(o=>o.type===histFilter||o.status===histFilter);
+  document.getElementById('hist-tbody').innerHTML = list.map(o => `
+    <tr>
+      <td class="mono">${o.id}</td>
+      <td><div class="res-name">Ch. ${o.room}</div><div class="res-room">📍 ${ROOMS[o.room]?.building||''}</div></td>
+      <td><span class="tag ${tc(o.type)}">${o.type}</span></td>
+      <td>${o.desc}</td>
+      <td>${sb(o.status)}</td>
+      <td class="mono">${o.time}</td>
+      <td><button class="link" onclick="openDetail('${o.id}')">Voir</button></td>
+    </tr>`).join('');
+}
+
+function hFilter(f,btn) {
+  histFilter=f;
+  document.querySelectorAll('.hf-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderHist();
+}
+
+function tc(t){ return t==='Repas'?'tag-r':t==='Médicament'?'tag-m':'tag-a'; }
+function sb(s){
+  const m={'Livrée':['sb-done','✅'],'En cours':['sb-go','🔄'],'En attente':['sb-wait','⏳'],'Annulée':['sb-cancel','✗']};
+  const [c,i]=m[s]||['sb-wait','?'];
+  return `<span class="sbadge ${c}">${i} ${s}</span>`;
+}
+
+// ============================================================
+// ROBOTS
+// ============================================================
+function renderRobots() {
+  document.getElementById('robots-grid').innerHTML = robots.map(r => {
+    const sc = r.status==='En mission'?'rst-mis':r.status==='Disponible'?'rst-ok':r.status==='En charge'?'rst-chg':'rst-off';
+    const bc = r.battery>50?'var(--green)':r.battery>20?'var(--yellow)':'var(--red)';
+    return `<div class="rbot-card">
+      <div class="rbot-top">
+        <span class="rbot-name">🤖 ${r.name}</span>
+        <span class="rbot-st ${sc}">${r.status}</span>
+      </div>
+      <div class="rbot-miss">${r.mission}</div>
+      <div class="batt-row">🔋 ${r.battery}%
+        <div class="batt-bar"><div class="batt-fill" style="width:${r.battery}%;background:${bc}"></div></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderActive() {
+  const active = orders.filter(o=>o.status==='En cours');
+  const el = document.getElementById('active-list');
+  if(!active.length) { el.innerHTML='<p style="color:var(--text2);font-size:.85rem;text-align:center;padding:1.5rem;">Aucune commande en cours</p>'; return; }
+  el.innerHTML = active.map(o => {
+    const prog = o.pickedAt ? 50 : 10;
+    return `<div class="ao-card">
+      <div class="ao-head"><span class="mono">${o.id}</span><span class="tag ${tc(o.type)}">${o.type}</span></div>
+      <div class="ao-info">${o.desc} — Chambre ${o.room} (${ROOMS[o.room]?.building||''})</div>
+      <div class="prog-row"><span style="font-size:.72rem;color:var(--text2)">Progression</span><strong style="font-size:.72rem">${prog}%</strong></div>
+      <div class="prog-bar"><div class="prog-fill" style="width:${prog}%"></div></div>
+      <div class="steps-row">
+        <div class="step s-done"><div class="step-dot">✓</div><div class="step-lbl">Créée</div><div class="step-t">${o.createdAt}</div></div>
+        <div class="step ${o.pickedAt?'s-done':'s-act'}"><div class="step-dot">${o.pickedAt?'✓':'→'}</div><div class="step-lbl">Prise</div><div class="step-t">${o.pickedAt||'...'}</div></div>
+        <div class="step s-pend"><div class="step-dot">○</div><div class="step-lbl">Livrée</div><div class="step-t">—</div></div>
+      </div>
+      ${o.robot?`<div class="assigned">🤖 ${o.robot}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+// NOTIFS
+// ============================================================
+function renderNotifs() {
+  document.getElementById('notifs-list').innerHTML = notifs.map(n => `
+    <div class="notif-item ${n.unread?'unread':''}">
+      <div class="ni-icon" style="background:${n.color}">${n.icon}</div>
+      <div class="ni-body"><div class="ni-title">${n.title}</div><div class="ni-msg">${n.msg}</div><div class="ni-time">${n.time}</div></div>
+      ${n.unread?'<div class="ni-dot"></div>':''}
+    </div>`).join('');
+}
+function markRead() { notifs.forEach(n=>n.unread=false); updateStats(); renderNotifs(); }
+function addNotif(icon,color,title,msg) {
+  notifs.unshift({id:Date.now(),icon,color,title,msg,time:nowTime(),unread:true});
+  updateStats(); renderNotifs();
+}
+
+// ============================================================
+// ORDER DETAIL
+// ============================================================
+function openDetail(id) {
+  const o = orders.find(x=>x.id===id); if(!o) return;
+  document.getElementById('det-title').textContent = `${o.id} – Chambre ${o.room}`;
+  document.getElementById('det-body').innerHTML = `
+    <div class="detail-row"><span class="dk">Chambre</span><span class="dv">Ch. ${o.room} – ${ROOMS[o.room]?.building||''}</span></div>
+    <div class="detail-row"><span class="dk">Type</span><span class="dv"><span class="tag ${tc(o.type)}">${o.type}</span></span></div>
+    <div class="detail-row"><span class="dk">Description</span><span class="dv">${o.desc}</span></div>
+    <div class="detail-row"><span class="dk">Statut</span><span class="dv">${sb(o.status)}</span></div>
+    <div class="detail-row"><span class="dk">Heure prévue</span><span class="dv mono">${o.time}</span></div>
+    ${o.robot?`<div class="detail-row"><span class="dk">Robot</span><span class="dv">🤖 ${o.robot}</span></div>`:''}
+    <div style="margin-top:1rem"><div style="font-size:.78rem;font-weight:700;color:var(--text2);margin-bottom:.6rem;">SUIVI</div>
+      ${tl('Créée',o.createdAt,'done')}${tl('Prise en charge',o.pickedAt,o.pickedAt?'done':(o.status==='En cours'?'act':'pend'))}${tl('Livrée',o.deliveredAt,o.deliveredAt?'done':'pend')}
+    </div>`;
+  const ft = document.getElementById('det-ft');
+  if(o.status==='En attente') {
+    ft.innerHTML=`<button class="btn-danger" onclick="doCancel('${o.id}')">✗ Annuler</button><button class="btn-p" onclick="doStart('${o.id}')">▶ Démarrer</button>`;
+  } else if(o.status==='En attente chargement') {
+    // Robot est à la cuisine, attente que le personnel charge la commande
+    ft.innerHTML=`<button class="btn-danger" onclick="doCancel('${o.id}')">✗ Annuler</button>
+    <button class="btn-p" style="background:linear-gradient(135deg,var(--orange),#c2410c)" onclick="doKitchenLoaded('${o.id}')">🍽️ Chargé – Envoyer !</button>`;
+  } else if(o.status==='En cours') {
+    // Robot en route – livraison automatique via ArUco résident, juste annuler possible
+    ft.innerHTML=`<button class="btn-danger" onclick="doCancel('${o.id}')">✗ Annuler mission</button>
+    <span style="font-size:.78rem;color:var(--text2);margin-left:.5rem">⏳ Livraison automatique en cours…</span>`;
+  } else {
+    ft.innerHTML=`<button class="btn-s" onclick="closeModal('m-detail')">Fermer</button>`;
+  }
+  openModal('m-detail');
+}
+
+function tl(label,time,state) {
+  return `<div class="tl-item"><div class="tl-dot tl-${state}-d"></div><div><div class="tl-lbl">${label}</div><div class="tl-t">${time||'—'}</div></div></div>`;
+}
+
+// ============================================================
+// ORDER ACTIONS
+// ============================================================
+function submitOrder() {
+  const room=document.getElementById('o-room').value;
+  const type=document.getElementById('o-type').value;
+  const time=document.getElementById('o-time').value;
+  const desc=document.getElementById('o-desc').value.trim();
+  if(!desc) { toast('Description requise','err'); return; }
+  const o = { id:`#CMD${String(cmdIdx).padStart(3,'0')}`, room, type, desc, status:'En attente', time:time||'--:--', robot:null, createdAt:time||nowTime(), pickedAt:null, deliveredAt:null };
+  cmdIdx++;
+  orders.unshift(o);
+  sendESP({ action:'new_order', order:o });
+  addNotif('📋','#1e3a6e','Nouvelle commande',`${o.id} créée – Chambre ${room}`);
+  closeModal('m-new'); renderAll(); toast(`Commande ${o.id} créée`,'ok');
+  document.getElementById('o-desc').value=''; document.getElementById('o-notes').value='';
+}
+
+function doStart(id) {
+  const o=orders.find(x=>x.id===id); if(!o) return;
+  o.status='En cours'; o.pickedAt=nowTime();
+  o.robot=robots.find(r=>r.status!=='Hors ligne')?.name||'Robot Alpha';
+  sendESP({action:'new_order',order:o});
+  addNotif('🔄','#1e3a6e','Mission démarrée',`${o.id} → Robot en route cuisine`);
+  closeModal('m-detail'); renderAll(); toast(`${o.id} – Robot en route !`,'ok');
+}
+
+function doKitchenLoaded(id) {
+  const o=orders.find(x=>x.id===id); if(!o) return;
+  sendESP({action:'kitchen_loaded', id:o.id});
+  o.status='En cours';
+  addNotif('🍽️','#431407','Commande chargée',`${o.id} – Robot part vers Ch.${o.room}`);
+  closeModal('m-detail'); renderAll(); toast(`${o.id} – Robot part en livraison !`,'ok');
+}
+
+function doDeliver(id) {
+  const o=orders.find(x=>x.id===id); if(!o) return;
+  o.status='Livrée'; o.deliveredAt=nowTime();
+  sendESP({action:'order_delivered',order:o});
+  addNotif('✅','#14532d','Livraison confirmée',`${o.id} – Chambre ${o.room}`);
+  closeModal('m-detail'); renderAll(); toast(`${o.id} livrée`,'ok');
+}
+
+function doCancel(id) {
+  const o=orders.find(x=>x.id===id); if(!o) return;
+  o.status='Annulée';
+  sendESP({action:'order_cancelled',id:o.id});
+  closeModal('m-detail'); renderAll(); toast(`${o.id} annulée`,'err');
+}
+
+function renderAll() { renderDash(); renderHist(); renderActive(); renderRobots(); updateStats(); }
+
+// ============================================================
+// PATIENT SPACE – only sees OWN room orders
+// ============================================================
+function renderPatientOrders() {
+  if(!currentUser||currentUser.role!=='patient') return;
+  const room = currentUser.room;
+  const myOrders = orders.filter(o=>o.room===room);
+  const el = document.getElementById('pt-orders');
+  if(!myOrders.length) {
+    el.innerHTML='<div style="text-align:center;padding:2rem;color:var(--text2);font-size:.85rem;">Aucune commande pour le moment</div>'; return;
+  }
+  el.innerHTML = myOrders.map(o => `
+    <div class="po-card">
+      <div class="po-head">
+        <div>
+          <span class="mono" style="font-size:.78rem">${o.id}</span>
+          <span class="tag ${tc(o.type)}" style="margin-left:.4rem">${o.type}</span>
+        </div>
+        ${sb(o.status)}
+      </div>
+      <div class="po-body">
+        <div class="po-desc">${o.desc}</div>
+        <div class="po-meta">⏰ Prévue à ${o.time}</div>
+        ${o.status==='Livrée'?`<div class="po-confirm">✓ Livré le ${new Date().toLocaleDateString('fr-FR')} à ${o.deliveredAt||o.time}</div>`:''}
+        ${o.status==='En cours'?`<div class="po-prog"><div style="font-size:.72rem;color:var(--text2)">En route… ${o.robot||''}</div><div class="po-prog-bar"><div class="po-prog-fill" style="width:50%"></div></div></div>`:''}
+      </div>
+    </div>`).join('');
+}
+
+function togglePtForm() {
+  const f=document.getElementById('pt-form');
+  f.classList.toggle('open');
+}
+
+function submitPtOrder() {
+  const room=currentUser.room;
+  const type=document.getElementById('pt-type').value;
+  const desc=document.getElementById('pt-desc').value.trim();
+  if(!desc) { toast('Description requise','err'); return; }
+  const o = { id:`#CMD${String(cmdIdx).padStart(3,'0')}`, room, type, desc, status:'En attente', time:nowTime(), robot:null, createdAt:nowTime(), pickedAt:null, deliveredAt:null };
+  cmdIdx++;
+  orders.unshift(o);
+  sendESP({action:'new_order',order:o});
+  toast(`Commande ${o.id} soumise`,'ok');
+  document.getElementById('pt-desc').value='';
+  document.getElementById('pt-form').classList.remove('open');
+  renderPatientOrders();
+}
+
+// ============================================================
+// ESP32 WEBSOCKET
+// ============================================================
+// AUTO-CONNEXION : le site est hébergé PAR l'ESP32,
+// donc le WebSocket pointe toujours sur window.location.hostname
+// ============================================================
+function connectESP() {
+  // Priorité : IP saisie manuellement → sinon l'hôte courant (ESP32)
+  const ip   = document.getElementById('esp-ip').value  || window.location.hostname;
+  const port = document.getElementById('esp-port').value || espPort || '81';
+  if(!ip) { toast('IP introuvable','err'); return; }
+  espIP=ip; espPort=port;
+  localStorage.setItem('espIP',ip); localStorage.setItem('espPort',port);
+  setESP('connecting','Connexion…',ip+':'+port);
+  try {
+    // Port 80 + chemin /ws : compatible hotspot iPhone (qui bloque les ports non-standard)
+    ws=new WebSocket(`ws://${ip}/ws`);
+    ws.onopen=()=>{
+      setESP('connected','ESP32 Connecté',ip);
+      closeModal('m-esp'); toast('ESP32 connecté !','ok');
+      sendESP({action:'hello',msg:'Site connecté'});
+    };
+    ws.onmessage=(e)=>{
+      try { handleESP(JSON.parse(e.data)); } catch(x){ console.log('ESP32:',e.data); }
+    };
+    ws.onclose=()=>{ setESP('disconnected','ESP32 Déconnecté',''); toast('ESP32 déconnecté','err'); wsReconnect(); };
+    ws.onerror=()=>{ setESP('disconnected','Erreur connexion','Vérifiez IP/Port'); toast('Connexion ESP32 échouée','err'); };
+  } catch(e) { setESP('disconnected','Erreur',e.message); }
+}
+
+// Reconnexion automatique après 5 s si le lien se coupe
+let _wsReconTimer=null;
+function wsReconnect(){
+  clearTimeout(_wsReconTimer);
+  _wsReconTimer=setTimeout(()=>{ if(!ws||ws.readyState!==WebSocket.OPEN){ connectESP(); } },5000);
+}
+
+function disconnectESP() { clearTimeout(_wsReconTimer); if(ws){ws.close();ws=null;} setESP('disconnected','ESP32 Déconnecté',''); }
+
+function setESP(state,lbl,det) {
+  const s=document.getElementById('esp-strip'); if(!s) return;
+  s.className='esp-strip es-'+state;
+  document.getElementById('esp-lbl').textContent=lbl;
+  document.getElementById('esp-det').textContent=det?'— '+det:'';
+}
+
+function sendESP(data) {
+  if(ws&&ws.readyState===WebSocket.OPEN) { ws.send(JSON.stringify(data)); console.log('→ESP32:',data); }
+}
+
+function handleESP(d) {
+  console.log('←ESP32:',d);
+
+  // ── Livraison confirmée par ArUco résident ──────────────────────
+  if(d.action==='status_update'||d.action==='delivery_confirmed') {
+    const id = d.id || d.order_id;
+    const o=orders.find(x=>x.id===id);
+    if(o){
+      if(d.action==='delivery_confirmed'||d.status==='Livrée'){
+        o.status='Livrée'; o.deliveredAt=nowTime();
+        addNotif('✅','#14532d','Livraison confirmée',`${id} – Chambre ${o.room}`);
+        toast(`✅ ${id} livrée avec succès !`,'ok');
+      } else if(d.status) {
+        o.status=d.status;
+        if(d.status==='En attente chargement') {
+          addNotif('🍽️','#431407','Robot à la cuisine',`${id} – En attente chargement`);
+          toast(`🍽️ ${id} : Robot à la cuisine – veuillez charger la commande`,'info');
+        }
+      }
+      renderAll();
+      if(currentUser?.role==='patient') renderPatientOrders();
+    }
+  }
+
+  // ── Statut robot ────────────────────────────────────────────────
+  if(d.action==='robot_status') {
+    const r=robots.find(x=>x.name===d.name)||robots[0];
+    if(r){
+      if(d.status)  r.status=d.status;
+      if(d.battery) r.battery=d.battery;
+      if(d.status==='En mission'&&d.order_id) r.mission=`→ ${d.order_id}`;
+      if(d.status==='Disponible') r.mission='Aucune mission';
+      if(d.status==='Hors ligne') { r.mission='—'; r.battery=0; }
+      renderRobots();
+    }
+    // Mise à jour commande si statut fourni
+    if(d.order_id && d.order_status) {
+      const o=orders.find(x=>x.id===d.order_id);
+      if(o && o.status!=='Livrée' && o.status!=='Annulée'){
+        o.status=d.order_status; renderAll();
+        if(currentUser?.role==='patient') renderPatientOrders();
+      }
+    }
+  }
+
+  // ── Position robot (pour mini-carte) ───────────────────────────
+  if(d.action==='robot_position'||d.action==='robot_pos') {
+    robotLivePos = {x: d.x, y: d.y, angle: d.angle||0};
+    drawRobotOnMap();
+  }
+
+  // ── Info carte reçue de l'ESP32 ────────────────────────────────
+  if(d.action==='map_info') {
+    mapInfo = {width: d.width, height: d.height, cell_cm: d.cell_cm||5};
+    initMapCanvas();
+  }
+
+  // ── Robot occupé ────────────────────────────────────────────────
+  if(d.action==='robot_busy') {
+    toast(`⚠️ ${d.msg}`,'err');
+  }
+}
+
+// ============================================================
+// MINI-CARTE – position robot en temps réel
+// ============================================================
+function initMapCanvas() {
+  if(!mapInfo) return;
+  const canvas = document.getElementById('map-canvas');
+  const ph     = document.getElementById('map-placeholder');
+  if(!canvas) return;
+  const scale  = Math.min(500 / mapInfo.width, 300 / mapInfo.height);
+  canvas.width  = Math.round(mapInfo.width  * scale);
+  canvas.height = Math.round(mapInfo.height * scale);
+  canvas.style.display = 'block';
+  if(ph) ph.style.display = 'none';
+  canvas._scale = scale;
+  drawRobotOnMap();
+}
+
+function drawRobotOnMap() {
+  const canvas = document.getElementById('map-canvas');
+  if(!canvas || !canvas._scale) return;
+  const ctx   = canvas.getContext('2d');
+  const scale = canvas._scale;
+
+  // Fond de carte
+  ctx.fillStyle = '#1a1d27';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Grille légère
+  ctx.strokeStyle = '#2e3348'; ctx.lineWidth = 0.5;
+  for(let x=0;x<canvas.width;x+=scale*10){ ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,canvas.height);ctx.stroke(); }
+  for(let y=0;y<canvas.height;y+=scale*10){ ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(canvas.width,y);ctx.stroke(); }
+
+  // Marqueurs de lieux connus
+  const lieux = [
+    {id:50,label:'🍽️',x:10,y:5}, {id:51,label:'101',x:10,y:40},
+    {id:52,label:'103',x:25,y:40},{id:53,label:'205',x:40,y:20},
+    {id:54,label:'207',x:40,y:35},{id:55,label:'302',x:10,y:20}
+  ];
+  lieux.forEach(l => {
+    const cx = l.x*scale, cy = l.y*scale;
+    ctx.fillStyle='#4f8ef740'; ctx.strokeStyle='#4f8ef7';
+    ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(cx,cy,scale*1.5,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#e2e8f0'; ctx.font=`${Math.max(8,scale*1.5)}px sans-serif`;
+    ctx.textAlign='center'; ctx.fillText(l.label, cx, cy+scale*0.5);
+  });
+
+  // Robot
+  if(robotLivePos) {
+    const rx = robotLivePos.x * scale;
+    const ry = robotLivePos.y * scale;
+    const r  = scale * 2;
+
+    ctx.save();
+    ctx.translate(rx, ry);
+    ctx.rotate((robotLivePos.angle||0) * Math.PI / 180);
+
+    // Corps du robot
+    ctx.fillStyle   = '#22c55e';
+    ctx.strokeStyle = '#16a34a';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+    // Flèche direction
+    ctx.fillStyle = 'white';
+    ctx.beginPath(); ctx.moveTo(0,-r*0.9); ctx.lineTo(r*0.4,r*0.3); ctx.lineTo(-r*0.4,r*0.3); ctx.closePath(); ctx.fill();
+
+    ctx.restore();
+
+    // Label
+    ctx.fillStyle='#22c55e'; ctx.font=`bold ${Math.max(9,scale*1.4)}px sans-serif`;
+    ctx.textAlign='center'; ctx.fillText('Robot', rx, ry - r - 3);
+  }
+}
+
+
+function simRT() {
+  robots[1].battery=Math.max(5,robots[1].battery-Math.floor(Math.random()*2));
+  const o=orders.find(x=>x.status==='En cours'&&!x.pickedAt);
+  if(o) o.pickedAt=nowTime();
+  renderRobots(); renderActive();
+  if(currentUser?.role==='patient') renderPatientOrders();
+}
+
+// ============================================================
+// MODAL / TOAST UTILS
+// ============================================================
+function openModal(id){ document.getElementById(id).classList.add('open'); }
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-ov').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('open');}));
+
+function toast(msg,type=''){
+  const c=document.getElementById('toast-wrap');
+  const t=document.createElement('div');
+  t.className='toast '+(type==='ok'?'ok':type==='err'?'err':type==='info'?'info':'');
+  t.textContent=msg; c.appendChild(t);
+  setTimeout(()=>t.remove(),3000);
+}
+
+// ── Au chargement : connexion automatique vers l'ESP32 hôte ─────────
+window.onload=()=>{
+  // L'IP de l'hôte = l'ESP32 lui-même (le site est servi depuis sa SD)
+  const hostIP = window.location.hostname || localStorage.getItem('espIP') || '';
+  espIP   = hostIP;
+  espPort = localStorage.getItem('espPort') || '81';
+  const ipEl   = document.getElementById('esp-ip');
+  const portEl = document.getElementById('esp-port');
+  if(ipEl)   ipEl.value   = espIP;
+  if(portEl) portEl.value = espPort;
+  // Connexion WebSocket automatique dès le chargement
+  connectESP();
+};
+</script>
+</body>
+</html>
