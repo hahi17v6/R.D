@@ -86,7 +86,6 @@ void loop() {
     float checkX = robotX_m + 1.0 * cos(angleRad);
     float checkY = robotY_m + 1.0 * sin(angleRad);
 
-<<<<<<< HEAD
     if (isObstacle(checkX, checkY)) {
         // La carte dit : "C'est un couloir"
         // On s'équilibre entre les deux murs
@@ -104,8 +103,3 @@ void loop() {
 
     delay(50); // Boucle à 20Hz
 }
-=======
-  delay(50); // Fréquence de calcul (20 fois par seconde)
-}
-
->>>>>>> c28528be7e6b4cc2b20c6084274dc238af6dd31f
