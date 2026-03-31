@@ -263,23 +263,36 @@ void processArduinoMessage(String msg) {
 
   Serial.println("[UART←] " + msg);
 
-  // Format: SENSORS:L,R,F,B
+  // Format: SENSORS:L,R,F,B,ANGLE (l'angle est optionnel/nouveau)
   if (msg.startsWith("SENSORS:")) {
     String data = msg.substring(8);
-    int vals[4];
+    float vals[5] = {0, 0, 0, 0, 0};
     int idx = 0;
     int start = 0;
-    for (int i = 0; i <= (int)data.length() && idx < 4; i++) {
+    for (int i = 0; i <= (int)data.length() && idx < 5; i++) {
       if (i == (int)data.length() || data[i] == ',') {
-        vals[idx++] = data.substring(start, i).toInt();
+        vals[idx++] = data.substring(start, i).toFloat();
         start = i + 1;
       }
     }
-    if (idx == 4) {
-      distLeft  = vals[0];
-      distRight = vals[1];
-      distFront = vals[2];
-      distBack  = vals[3];
+    if (idx >= 4) {
+      distLeft  = (int)vals[0];
+      distRight = (int)vals[1];
+      distFront = (int)vals[2];
+      distBack  = (int)vals[3];
+    }
+    if (idx == 5) {
+      float currentImuRaw = vals[4];
+      static float lastImuRaw = 0.0;
+      float deltaAngle = currentImuRaw - lastImuRaw;
+      lastImuRaw = currentImuRaw;
+      
+      // Intégrer la variation du gyroscope dans l'angle global
+      robotAngle += deltaAngle;
+      
+      // Garder l'angle entre 0 et 360
+      while (robotAngle >= 360.0) robotAngle -= 360.0;
+      while (robotAngle < 0.0) robotAngle += 360.0;
     }
   }
   // Format: BUTTON:0 ou BUTTON:1

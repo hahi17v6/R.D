@@ -61,6 +61,55 @@ Servo monServo;
 #define ANGLE_DEVERROUILLE  90
 
 // ══════════════════════════════════════════════════════════════
+// IMU 10DOF (MPU9250 / MPU6050) — via I2C (SDA=A4, SCL=A5)
+// ══════════════════════════════════════════════════════════════
+#define MPU_ADDR 0x68
+float imuAngleZ = 0.0;
+unsigned long lastImuTime = 0;
+float gyroZ_offset = 0.0;
+
+void setupIMU() {
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x6B); // PWR_MGMT_1 register
+  Wire.write(0);    // Reveille le MPU
+  Wire.endTransmission(true);
+
+  // Calibration basique du gyro Z
+  long sum = 0;
+  for(int i = 0; i < 500; i++) {
+    Wire.beginTransmission(MPU_ADDR);
+    Wire.write(0x47); // GYRO_ZOUT_H
+    Wire.endTransmission(false);
+    Wire.requestFrom((int)MPU_ADDR, 2, (int)true);
+    int16_t gz = Wire.read() << 8 | Wire.read();
+    sum += gz;
+    delay(3);
+  }
+  gyroZ_offset = sum / 500.0;
+  lastImuTime = millis();
+}
+
+void lireIMU() {
+  unsigned long now = millis();
+  float dt = (now - lastImuTime) / 1000.0;
+  lastImuTime = now;
+
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x47); // GYRO_ZOUT_H
+  Wire.endTransmission(false);
+  Wire.requestFrom((int)MPU_ADDR, 2, (int)true);
+  int16_t gz = Wire.read() << 8 | Wire.read();
+
+  // 131.0 LSB/(deg/s) pour l'échelle par défaut ±250deg/s
+  float gyroRate = (gz - gyroZ_offset) / 131.0;
+  
+  // Seuil anti-bruit (deadband)
+  if (abs(gyroRate) > 1.0) {
+    imuAngleZ += gyroRate * dt;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
 // BOUTON POUSSOIR — Détection plat
 // ══════════════════════════════════════════════════════════════
 #define BUTTON_PIN A0
@@ -366,12 +415,13 @@ void envoyerEtat() {
   if (millis() - dernierEnvoi < 500) return;  // 2x par seconde
   dernierEnvoi = millis();
 
-  // Envoyer les distances capteurs
+  // Envoyer les distances capteurs et l'angle IMU
   Serial.print("SENSORS:");
   Serial.print(distLeft);  Serial.print(",");
   Serial.print(distRight); Serial.print(",");
   Serial.print(distFront); Serial.print(",");
-  Serial.println(distBack);
+  Serial.print(distBack);  Serial.print(",");
+  Serial.println(imuAngleZ);
 
   // Envoyer l'état du bouton poussoir
   int buttonState = digitalRead(BUTTON_PIN);
@@ -471,6 +521,12 @@ void setup() {
   // LCD I2C
   lcd.init();
   lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("Calibrating IMU.");
+  
+  // IMU
+  setupIMU();
+
   afficherPret();
 
   // Servo — initialiser verrouillé puis détacher
@@ -498,12 +554,15 @@ void loop() {
   // 3. Décision de sécurité locale (capteurs > ordres ESP32)
   decisionLocale();
 
-  // 4. Mise à jour progressive des moteurs (rampe)
+  // 4. Lire l'IMU pour calculer l'angle (se fait en continu)
+  lireIMU();
+
+  // 5. Mise à jour progressive des moteurs (rampe)
   mettreAJourRampe();
 
-  // 5. Vérifier le bouton poussoir
+  // 6. Vérifier le bouton poussoir
   verifierBouton();
 
-  // 6. Envoyer l'état à l'ESP32
+  // 7. Envoyer l'état à l'ESP32
   envoyerEtat();
 }
