@@ -2,26 +2,7 @@
  * robot_slave.ino
  * 
  * Arduino Uno — Firmware Esclave du Robot Distributeur
- * 
- * Fonctions :
- *   1. Réception ordres UART depuis ESP32 (FWD, STOP, LEFT, RIGHT, etc.)
- *   2. Contrôle moteurs (Motor Shield) + rampe d'accélération
- *   3. Capteurs ultrason (4 directions) : centrage couloir + évitement
- *   4. LCD I2C + Servo : affichage état + verrouillage casier
- *   5. Bouton poussoir : détection présence du plat
- *   6. Envoi état vers ESP32 via UART
- * 
- * SÉCURITÉ : Les capteurs ont TOUJOURS priorité sur les ordres ESP32
- * 
- * Câblage :
- *   Moteur A : DIR=12, FREN=9, PWM=3
- *   Moteur B : DIR=13, FREN=8, PWM=11
- *   Ultrason  : Gauche=4, Droite=5, Avant=6, Arrière=7
- *   LCD I2C   : SDA=A4, SCL=A5
- *   Servo     : Pin 10
- *   Bouton    : A0
- *   UART ESP32: RX=0 (← ESP32 TX2=17), TX=1 (→ ESP32 RX2=16)
- *   Clavier   : Sur l'ESP32 (pas sur l'Arduino)
+ * Optimisé : UART Binaire à 115200 Bauds, PID Centrage
  */
 
 #include <NewPing.h>
@@ -30,7 +11,31 @@
 #include <Servo.h>
 
 // ══════════════════════════════════════════════════════════════
-// PINS — MOTEURS (Arduino Motor Shield)
+// STRUCTURES BINAIRES UART
+// ══════════════════════════════════════════════════════════════
+#pragma pack(push, 1)
+struct CommandPacket {
+  uint8_t header; // 0xAA
+  uint8_t action; // 1=FWD, 2=BACK, 3=LEFT, 4=RIGHT, 5=STOP, 6=UNLOCK, 7=SERVO_OPEN, 8=SERVO_CLOSE, 9=LCD_MSG
+  int32_t arg;    // Argument 
+};
+
+struct SensorPacket {
+  uint8_t header; // 0xBB
+  uint8_t distLeft;
+  uint8_t distRight;
+  uint8_t distFront;
+  uint8_t distBack;
+  int16_t imuAngle;
+  uint8_t buttonState;
+  uint8_t event; // 0=None, 1=Obstacle, 2=DoorOpened
+};
+#pragma pack(pop)
+
+uint8_t pendingEvent = 0;
+
+// ══════════════════════════════════════════════════════════════
+// PINS 
 // ══════════════════════════════════════════════════════════════
 #define MOT_B_DIR   13
 #define MOT_B_FREN  8
@@ -39,21 +44,13 @@
 #define MOT_A_FREN  9
 #define MOT_A_PWM   3
 
-// ══════════════════════════════════════════════════════════════
-// PINS — CAPTEURS ULTRASON (NewPing, single-pin mode)
-// ══════════════════════════════════════════════════════════════
 #define MAX_DISTANCE 200
 NewPing leftSensor (4, 4, MAX_DISTANCE);
 NewPing rightSensor(5, 5, MAX_DISTANCE);
 NewPing frontSensor(6, 6, MAX_DISTANCE);
 NewPing backSensor (7, 7, MAX_DISTANCE);
 
-// ══════════════════════════════════════════════════════════════
-// LCD I2C + SERVO
-// ══════════════════════════════════════════════════════════════
-LiquidCrystal_I2C lcd(0x27, 16, 2);  // Adresse 0x27, 16x2
-// NOTE: Si ton LCD a l'adresse 0x20, change ci-dessus.
-// Tu peux tester avec un I2C scanner.
+LiquidCrystal_I2C lcd(0x27, 16, 2); 
 
 Servo monServo;
 #define SERVO_PIN       10
@@ -61,7 +58,7 @@ Servo monServo;
 #define ANGLE_DEVERROUILLE  90
 
 // ══════════════════════════════════════════════════════════════
-// IMU 10DOF (MPU9250 / MPU6050) — via I2C (SDA=A4, SCL=A5)
+// IMU 10DOF
 // ══════════════════════════════════════════════════════════════
 #define MPU_ADDR 0x68
 float imuAngleZ = 0.0;
@@ -70,15 +67,14 @@ float gyroZ_offset = 0.0;
 
 void setupIMU() {
   Wire.beginTransmission(MPU_ADDR);
-  Wire.write(0x6B); // PWR_MGMT_1 register
-  Wire.write(0);    // Reveille le MPU
+  Wire.write(0x6B); 
+  Wire.write(0);    
   Wire.endTransmission(true);
 
-  // Calibration basique du gyro Z
   long sum = 0;
   for(int i = 0; i < 500; i++) {
     Wire.beginTransmission(MPU_ADDR);
-    Wire.write(0x47); // GYRO_ZOUT_H
+    Wire.write(0x47); 
     Wire.endTransmission(false);
     Wire.requestFrom((int)MPU_ADDR, 2, (int)true);
     int16_t gz = Wire.read() << 8 | Wire.read();
@@ -95,75 +91,55 @@ void lireIMU() {
   lastImuTime = now;
 
   Wire.beginTransmission(MPU_ADDR);
-  Wire.write(0x47); // GYRO_ZOUT_H
+  Wire.write(0x47);
   Wire.endTransmission(false);
   Wire.requestFrom((int)MPU_ADDR, 2, (int)true);
   int16_t gz = Wire.read() << 8 | Wire.read();
 
-  // 131.0 LSB/(deg/s) pour l'échelle par défaut ±250deg/s
   float gyroRate = (gz - gyroZ_offset) / 131.0;
-  
-  // Seuil anti-bruit (deadband)
   if (abs(gyroRate) > 1.0) {
     imuAngleZ += gyroRate * dt;
   }
 }
 
-// ══════════════════════════════════════════════════════════════
-// BOUTON POUSSOIR — Détection plat
-// ══════════════════════════════════════════════════════════════
 #define BUTTON_PIN A0
 
-// ══════════════════════════════════════════════════════════════
-// PARAMÈTRES MOTEURS
-// ══════════════════════════════════════════════════════════════
 #define VITESSE_BASE    180
 #define VITESSE_VIRAGE  130
 #define PAS_RAMPE       6
 #define DELAI_RAMPE     12
 
-#define SEUIL_OBSTACLE_AVANT    20   // cm
+#define SEUIL_OBSTACLE_AVANT    20   
 #define SEUIL_OBSTACLE_ARRIERE  15
 #define SEUIL_CENTRAGE          4
 #define SEUIL_INTERSECTION      50
 
-// ══════════════════════════════════════════════════════════════
-// VARIABLES D'ÉTAT
-// ══════════════════════════════════════════════════════════════
-
-// Moteurs
 int vitesseA = 0, vitesseB = 0;
 int cibleA = 0, cibleB = 0;
 bool dirA = HIGH, dirB = HIGH;
 bool nouvelleDirA = HIGH, nouvelleDirB = HIGH;
 
-// Capteurs
 int distLeft = MAX_DISTANCE, distRight = MAX_DISTANCE;
 int distFront = MAX_DISTANCE, distBack = MAX_DISTANCE;
 
-// Timing
 unsigned long dernierUpdate = 0;
 unsigned long dernierCapteur = 0;
 unsigned long dernierEnvoi = 0;
 
-// État
 enum RobotMode {
-  MODE_IDLE,           // Arrêté, attend les ordres
-  MODE_FORWARD,        // Avance (avec centrage ultrason)
-  MODE_BACKWARD,       // Recule
-  MODE_TURN_LEFT,      // Tourne à gauche
-  MODE_TURN_RIGHT,     // Tourne à droite
-  MODE_DELIVERY,       // Arrêté, attente livraison (LCD actif)
-  MODE_EMERGENCY_STOP  // Arrêt d'urgence (obstacle)
+  MODE_IDLE,           
+  MODE_FORWARD,        
+  MODE_BACKWARD,       
+  MODE_TURN_LEFT,      
+  MODE_TURN_RIGHT,     
+  MODE_DELIVERY,       
+  MODE_EMERGENCY_STOP  
 };
 
 RobotMode currentMode = MODE_IDLE;
 bool obstacleDetected = false;
 String unlockCode = "";
 bool casierOuvert = false;
-
-// Buffer UART
-String uartBuffer = "";
 
 // ══════════════════════════════════════════════════════════════
 // MOTEURS
@@ -190,7 +166,6 @@ void mettreAJourRampe() {
   if (millis() - dernierUpdate < DELAI_RAMPE) return;
   dernierUpdate = millis();
 
-  // Moteur A
   if (vitesseA > 0 && dirA != nouvelleDirA) {
     vitesseA = max(0, vitesseA - PAS_RAMPE);
   } else {
@@ -200,7 +175,6 @@ void mettreAJourRampe() {
   }
   setMoteurA(dirA, vitesseA);
 
-  // Moteur B
   if (vitesseB > 0 && dirB != nouvelleDirB) {
     vitesseB = max(0, vitesseB - PAS_RAMPE);
   } else {
@@ -211,59 +185,24 @@ void mettreAJourRampe() {
   setMoteurB(dirB, vitesseB);
 }
 
-// ══════════════════════════════════════════════════════════════
-// COMMANDES MOTEUR
-// ══════════════════════════════════════════════════════════════
+void cmdAvancer() { nouvelleDirA = HIGH; cibleA = VITESSE_BASE; nouvelleDirB = HIGH; cibleB = VITESSE_BASE; }
+void cmdReculer() { nouvelleDirA = LOW; cibleA = VITESSE_BASE; nouvelleDirB = LOW; cibleB = VITESSE_BASE; }
+void cmdVirerGauche() { nouvelleDirA = HIGH; cibleA = VITESSE_VIRAGE; nouvelleDirB = HIGH; cibleB = VITESSE_BASE; }
+void cmdVirerDroite() { nouvelleDirA = HIGH; cibleA = VITESSE_BASE; nouvelleDirB = HIGH; cibleB = VITESSE_VIRAGE; }
+void cmdPivotGauche() { nouvelleDirA = LOW;  cibleA = VITESSE_BASE; nouvelleDirB = HIGH; cibleB = VITESSE_BASE; }
+void cmdPivotDroite() { nouvelleDirA = HIGH; cibleA = VITESSE_BASE; nouvelleDirB = LOW;  cibleB = VITESSE_BASE; }
+void cmdStop() { cibleA = 0; cibleB = 0; }
 
-void cmdAvancer() {
-  nouvelleDirA = HIGH; cibleA = VITESSE_BASE;
-  nouvelleDirB = HIGH; cibleB = VITESSE_BASE;
-}
-
-void cmdReculer() {
-  nouvelleDirA = LOW; cibleA = VITESSE_BASE;
-  nouvelleDirB = LOW; cibleB = VITESSE_BASE;
-}
-
-void cmdVirerGauche() {
-  nouvelleDirA = HIGH; cibleA = VITESSE_VIRAGE;
-  nouvelleDirB = HIGH; cibleB = VITESSE_BASE;
-}
-
-void cmdVirerDroite() {
-  nouvelleDirA = HIGH; cibleA = VITESSE_BASE;
-  nouvelleDirB = HIGH; cibleB = VITESSE_VIRAGE;
-}
-
-void cmdPivotGauche() {
-  nouvelleDirA = LOW;  cibleA = VITESSE_BASE;
-  nouvelleDirB = HIGH; cibleB = VITESSE_BASE;
-}
-
-void cmdPivotDroite() {
-  nouvelleDirA = HIGH; cibleA = VITESSE_BASE;
-  nouvelleDirB = LOW;  cibleB = VITESSE_BASE;
-}
-
-void cmdStop() {
-  cibleA = 0;
-  cibleB = 0;
-}
-
-// ══════════════════════════════════════════════════════════════
-// CAPTEURS ULTRASON
-// ══════════════════════════════════════════════════════════════
-
+// Capteurs
 int lireCapteur(NewPing &sensor) {
-  unsigned int uS = sensor.ping_median(3);
+  unsigned int uS = sensor.ping_median(1); // 1 ping pour aller vite!
   if (uS == 0) return MAX_DISTANCE;
   return uS / US_ROUNDTRIP_CM;
 }
 
 void lireTousLesCapteurs() {
-  if (millis() - dernierCapteur < 100) return;
+  if (millis() - dernierCapteur < 50) return; // 20Hz
   dernierCapteur = millis();
-
   distFront = lireCapteur(frontSensor);
   distBack  = lireCapteur(backSensor);
   distLeft  = lireCapteur(leftSensor);
@@ -271,200 +210,129 @@ void lireTousLesCapteurs() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// LOGIQUE DE DÉCISION LOCALE (SÉCURITÉ)
+// LOGIQUE DE DÉCISION LOCALE (CENTRAGE / SÉCURITÉ)
 // ══════════════════════════════════════════════════════════════
 
 void decisionLocale() {
-  // En mode livraison ou idle, pas de navigation
   if (currentMode == MODE_DELIVERY || currentMode == MODE_IDLE) return;
 
   int diff = distLeft - distRight;
 
-  // *** PRIORITÉ 1 : OBSTACLE DEVANT → ARRÊT IMMÉDIAT ***
+  // PRIORITÉ 1: OBSTACLE DEVANT
   if (distFront < SEUIL_OBSTACLE_AVANT) {
     if (!obstacleDetected) {
       arretUrgence();
       obstacleDetected = true;
-      Serial.println("OBSTACLE");  // Informer l'ESP32
+      pendingEvent = 1; // Signal Obstacle
       currentMode = MODE_EMERGENCY_STOP;
     }
     return;
   }
 
-  // Si on sort d'un arrêt d'urgence
   if (obstacleDetected && distFront >= SEUIL_OBSTACLE_AVANT) {
     obstacleDetected = false;
-    // Reprendre le mode précédent
-    if (currentMode == MODE_EMERGENCY_STOP) {
-      currentMode = MODE_FORWARD;
-    }
+    if (currentMode == MODE_EMERGENCY_STOP) currentMode = MODE_FORWARD;
   }
 
-  // *** PRIORITÉ 2 : OBSTACLE ARRIÈRE ***
+  // PRIORITÉ 2: OBSTACLE ARRIERE
   if (distBack < SEUIL_OBSTACLE_ARRIERE && currentMode == MODE_BACKWARD) {
-    arretUrgence();
-    delay(200);
-    currentMode = MODE_FORWARD;
-    cmdAvancer();
+    arretUrgence(); delay(200);
+    currentMode = MODE_FORWARD; cmdAvancer();
     return;
   }
 
-  // *** PRIORITÉ 3 : CENTRAGE COULOIR (quand mode FORWARD) ***
+  // PRIORITÉ 3: CENTRAGE
   if (currentMode == MODE_FORWARD) {
-    // Intersection détectée (un côté très ouvert)
     if (abs(diff) > SEUIL_INTERSECTION) {
-      // Continuer tout droit
-      cmdAvancer();
+      cmdAvancer(); 
     }
-    // Centrage normal
-    else if (abs(diff) < SEUIL_CENTRAGE) {
+    else if (distLeft < 15 || distRight < 15) {
+      if (distLeft < distRight) cmdVirerDroite();
+      else cmdVirerGauche();
+    }
+    else if (abs(diff) <= SEUIL_CENTRAGE) {
       cmdAvancer();
     }
     else if (diff > 0) {
-      // Plus d'espace à gauche → corriger vers droite
-      cmdVirerDroite();
+      // distLeft > distRight => plus de place à gauche => se décaler à gauche (donc tourner gauche)
+      cmdVirerGauche();
     }
     else {
-      // Plus d'espace à droite → corriger vers gauche
-      cmdVirerGauche();
+      // distLeft < distRight => plus de place à droite => se décaler à droite (donc tourner droite)
+      cmdVirerDroite();
     }
   }
 }
 
 // ══════════════════════════════════════════════════════════════
-// COMMUNICATION UART — RÉCEPTION ESP32
+// COMMUNICATION UART BINAIRE
 // ══════════════════════════════════════════════════════════════
 
-void processESP32Message(String msg) {
-  msg.trim();
-  if (msg.length() == 0) return;
-
-  if (msg == "FWD") {
-    currentMode = MODE_FORWARD;
-    cmdAvancer();
+void applyCommand(CommandPacket cmd) {
+  if (cmd.action == 1) { currentMode = MODE_FORWARD; cmdAvancer(); }
+  else if (cmd.action == 2) { currentMode = MODE_BACKWARD; cmdReculer(); }
+  else if (cmd.action == 3) { currentMode = MODE_TURN_LEFT; cmdPivotGauche(); }
+  else if (cmd.action == 4) { currentMode = MODE_TURN_RIGHT; cmdPivotDroite(); }
+  else if (cmd.action == 5) { currentMode = MODE_IDLE; arretUrgence(); }
+  else if (cmd.action == 6) { 
+    char buf[7]; sprintf(buf, "%06ld", (long)cmd.arg);
+    unlockCode = String(buf);
+    currentMode = MODE_DELIVERY; arretUrgence();
+    lcd.clear(); lcd.setCursor(0, 0); lcd.print("Entrez le code");
   }
-  else if (msg == "BACK") {
-    currentMode = MODE_BACKWARD;
-    cmdReculer();
+  else if (cmd.action == 7) {
+    monServo.attach(SERVO_PIN, 500, 2500); monServo.write(ANGLE_DEVERROUILLE); casierOuvert = true;
   }
-  else if (msg == "LEFT") {
-    currentMode = MODE_TURN_LEFT;
-    cmdPivotGauche();
+  else if (cmd.action == 8) {
+    monServo.write(ANGLE_VERROUILLE); delay(500); monServo.detach(); casierOuvert = false;
   }
-  else if (msg == "RIGHT") {
-    currentMode = MODE_TURN_RIGHT;
-    cmdPivotDroite();
-  }
-  else if (msg == "STOP") {
-    currentMode = MODE_IDLE;
-    arretUrgence();
-  }
-  else if (msg.startsWith("UNLOCK:")) {
-    // Passer en mode livraison — afficher "Entrez le code" sur LCD
-    unlockCode = msg.substring(7);
-    currentMode = MODE_DELIVERY;
-    arretUrgence();
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Entrez le code");
-  }
-  else if (msg.startsWith("LCD:")) {
-    // Afficher un texte sur le LCD (envoyé par l'ESP32)
-    String text = msg.substring(4);
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print(text);
-  }
-  else if (msg == "SERVO:OPEN") {
-    // Ouvrir le casier
-    monServo.attach(SERVO_PIN, 500, 2500);
-    monServo.write(ANGLE_DEVERROUILLE);
-    casierOuvert = true;
-  }
-  else if (msg == "SERVO:CLOSE") {
-    // Fermer le casier
-    monServo.write(ANGLE_VERROUILLE);
-    delay(500);
-    monServo.detach();
-    casierOuvert = false;
-  }
-  else if (msg.startsWith("ARUCO:")) {
-    // ArUco détecté : info seulement pour le debug
-    int id = msg.substring(6).toInt();
-    // Rien de spécial à faire côté Arduino, l'ESP32 gère la recalibration
+  else if (cmd.action == 9) { // LCD
+    lcd.clear(); lcd.setCursor(0, 0);
+    if (cmd.arg == 1) lcd.print("Code OK!");
+    else if (cmd.arg == 2) lcd.print("Code faux!");
+    else if (cmd.arg == 3) lcd.print("Entrez le code");
+    else {
+      // Nombre d'étoiles
+      lcd.print("Code: ");
+      for(int i=0; i<cmd.arg; i++) lcd.print("*");
+    }
   }
 }
 
 void lireUART() {
-  while (Serial.available()) {
-    char c = Serial.read();
-    if (c == '\n') {
-      processESP32Message(uartBuffer);
-      uartBuffer = "";
-    } else if (c != '\r') {
-      uartBuffer += c;
+  if (Serial.available() >= (int)sizeof(CommandPacket)) {
+    if (Serial.peek() == 0xAA) {
+      CommandPacket cmd;
+      Serial.readBytes((uint8_t*)&cmd, sizeof(CommandPacket));
+      applyCommand(cmd);
+    } else {
+      Serial.read(); // Jette le byte invalide
     }
   }
 }
 
-// ══════════════════════════════════════════════════════════════
-// ENVOI ÉTAT VERS ESP32
-// ══════════════════════════════════════════════════════════════
-
 void envoyerEtat() {
-  if (millis() - dernierEnvoi < 500) return;  // 2x par seconde
+  if (millis() - dernierEnvoi < 50) return;  // 20Hz
   dernierEnvoi = millis();
 
-  // Envoyer les distances capteurs et l'angle IMU
-  Serial.print("SENSORS:");
-  Serial.print(distLeft);  Serial.print(",");
-  Serial.print(distRight); Serial.print(",");
-  Serial.print(distFront); Serial.print(",");
-  Serial.print(distBack);  Serial.print(",");
-  Serial.println(imuAngleZ);
-
-  // Envoyer l'état du bouton poussoir
-  int buttonState = digitalRead(BUTTON_PIN);
-  Serial.print("BUTTON:");
-  Serial.println(buttonState);
-}
-
-// ══════════════════════════════════════════════════════════════
-// LCD — AFFICHAGE
-// ══════════════════════════════════════════════════════════════
-
-void afficherCodeLivraison() {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Code livraison:");
-  lcd.setCursor(0, 1);
-  lcd.print(unlockCode);
-
-  // Ouvrir le casier (servo)
-  monServo.attach(SERVO_PIN, 500, 2500);
-  monServo.write(ANGLE_DEVERROUILLE);
-  casierOuvert = true;
+  SensorPacket sp;
+  sp.header = 0xBB;
+  sp.distLeft = min(255, distLeft);
+  sp.distRight = min(255, distRight);
+  sp.distFront = min(255, distFront);
+  sp.distBack = min(255, distBack);
+  sp.imuAngle = (int16_t)imuAngleZ;
+  sp.buttonState = digitalRead(BUTTON_PIN);
+  sp.event = pendingEvent;
+  
+  Serial.write((uint8_t*)&sp, sizeof(SensorPacket));
+  if (pendingEvent != 0) pendingEvent = 0; // Consumé
 }
 
 void afficherPret() {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Robot pret");
-  lcd.setCursor(0, 1);
-  lcd.print("En attente...");
+  lcd.clear(); lcd.setCursor(0, 0); lcd.print("Robot pret");
+  lcd.setCursor(0, 1); lcd.print("En attente...");
 }
-
-void afficherEnRoute() {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("En route...");
-  lcd.setCursor(0, 1);
-  lcd.print("Ne pas toucher");
-}
-
-// ══════════════════════════════════════════════════════════════
-// BOUTON POUSSOIR — Vérification plat
-// ══════════════════════════════════════════════════════════════
 
 void verifierBouton() {
   static bool dernierEtat = false;
@@ -472,97 +340,41 @@ void verifierBouton() {
 
   if (etatActuel != dernierEtat) {
     dernierEtat = etatActuel;
-    Serial.print("BUTTON:");
-    Serial.println(etatActuel ? "1" : "0");
-
-    // Si le casier est ouvert et que le plat est retiré
     if (currentMode == MODE_DELIVERY && casierOuvert && !etatActuel) {
-      // Fermer le casier
-      monServo.write(ANGLE_VERROUILLE);
-      delay(500);
-      monServo.detach();
-      casierOuvert = false;
-
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("Bon appetit !");
+      monServo.write(ANGLE_VERROUILLE); delay(500); monServo.detach(); casierOuvert = false;
+      lcd.clear(); lcd.setCursor(0, 0); lcd.print("Bon appetit !");
       delay(2000);
-
-      // Informer l'ESP32
-      Serial.println("DOOR_OPENED");
-
+      pendingEvent = 2; // DOOR_OPENED
       currentMode = MODE_IDLE;
       afficherPret();
     }
   }
 }
 
-// ══════════════════════════════════════════════════════════════
-// SETUP
-// ══════════════════════════════════════════════════════════════
-
 void setup() {
-  // UART vers ESP32 (utilise le port série hardware)
-  Serial.begin(9600);
+  Serial.begin(115200);
 
-  // Moteurs
-  pinMode(MOT_A_DIR,  OUTPUT);
-  pinMode(MOT_A_FREN, OUTPUT);
-  pinMode(MOT_A_PWM,  OUTPUT);
-  pinMode(MOT_B_DIR,  OUTPUT);
-  pinMode(MOT_B_FREN, OUTPUT);
-  pinMode(MOT_B_PWM,  OUTPUT);
-  digitalWrite(MOT_A_FREN, LOW);
-  digitalWrite(MOT_B_FREN, LOW);
+  pinMode(MOT_A_DIR, OUTPUT); pinMode(MOT_A_FREN, OUTPUT); pinMode(MOT_A_PWM, OUTPUT);
+  pinMode(MOT_B_DIR, OUTPUT); pinMode(MOT_B_FREN, OUTPUT); pinMode(MOT_B_PWM, OUTPUT);
+  digitalWrite(MOT_A_FREN, LOW); digitalWrite(MOT_B_FREN, LOW);
 
-  // Bouton poussoir
   pinMode(BUTTON_PIN, INPUT);
 
-  // LCD I2C
-  lcd.init();
-  lcd.backlight();
-  lcd.setCursor(0, 0);
-  lcd.print("Calibrating IMU.");
-  
-  // IMU
+  lcd.init(); lcd.backlight();
+  lcd.setCursor(0, 0); lcd.print("Calibrating IMU.");
   setupIMU();
-
   afficherPret();
 
-  // Servo — initialiser verrouillé puis détacher
   monServo.attach(SERVO_PIN, 500, 2500);
-  monServo.write(ANGLE_VERROUILLE);
-  delay(500);
-  monServo.detach();
-
-  Serial.println("READY");
+  monServo.write(ANGLE_VERROUILLE); delay(500); monServo.detach();
 }
 
-// ══════════════════════════════════════════════════════════════
-// LOOP
-// ══════════════════════════════════════════════════════════════
-
 void loop() {
-  // 1. Lire les ordres de l'ESP32
   lireUART();
-
-  // 2. Lire les capteurs ultrason (sauf en mode livraison)
-  if (currentMode != MODE_DELIVERY) {
-    lireTousLesCapteurs();
-  }
-
-  // 3. Décision de sécurité locale (capteurs > ordres ESP32)
+  if (currentMode != MODE_DELIVERY) lireTousLesCapteurs();
   decisionLocale();
-
-  // 4. Lire l'IMU pour calculer l'angle (se fait en continu)
   lireIMU();
-
-  // 5. Mise à jour progressive des moteurs (rampe)
   mettreAJourRampe();
-
-  // 6. Vérifier le bouton poussoir
   verifierBouton();
-
-  // 7. Envoyer l'état à l'ESP32
   envoyerEtat();
 }

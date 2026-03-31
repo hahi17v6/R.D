@@ -33,6 +33,25 @@
 #include <SPI.h>
 #include <SD.h>
 #include <Keypad.h>
+#include "AStarPathfinder.h"
+
+#pragma pack(push, 1)
+struct CommandPacket {
+  uint8_t header; 
+  uint8_t action; 
+  int32_t arg;
+};
+struct SensorPacket {
+  uint8_t header; 
+  uint8_t distLeft;
+  uint8_t distRight;
+  uint8_t distFront;
+  uint8_t distBack;
+  int16_t imuAngle;
+  uint8_t buttonState;
+  uint8_t event;
+};
+#pragma pack(pop)
 
 // ══════════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -60,7 +79,7 @@ WebSocketsServer webSocket(81);
 // --- UART vers Arduino ---
 #define UART_TX 17
 #define UART_RX 16
-#define UART_BAUD 9600
+#define UART_BAUD 115200
 
 // --- Clavier 4x4 ---
 const byte KP_ROWS = 4;
@@ -158,18 +177,30 @@ const int NB_ROOMS = sizeof(roomRegistry) / sizeof(roomRegistry[0]);
 
 bool initMap() {
   File file = SD.open(MAP_FILENAME);
-  if (!file) {
-    Serial.println("[MAP] map.bin introuvable sur SD");
-    return false;
-  }
+  if (!file) { Serial.println("[MAP] map.bin introuvable sur SD"); return false; }
   file.read((uint8_t*)&MAP_WIDTH, 4);
   file.read((uint8_t*)&MAP_HEIGHT, 4);
-  file.close();
   bytesPerRow = (MAP_WIDTH + 7) / 8;
-  Serial.printf("[MAP] Carte chargée : %ux%u pixels, %.2fx%.2f mètres\n",
-    MAP_WIDTH, MAP_HEIGHT,
-    MAP_WIDTH * METERS_PER_PIXEL,
-    MAP_HEIGHT * METERS_PER_PIXEL);
+  
+  float realW = MAP_WIDTH * METERS_PER_PIXEL;
+  float realH = MAP_HEIGHT * METERS_PER_PIXEL;
+  Serial.printf("[MAP] Carte chargée : %ux%u pixels, %.2fx%.2f mètres\n", MAP_WIDTH, MAP_HEIGHT, realW, realH);
+  
+  if (allocateCoarseMap(realW, realH)) {
+     for (int cy = 0; cy < coarseH; cy++) {
+       for (int cx = 0; cx < coarseW; cx++) {
+          int px = (int)((cx * CELL_SIZE_M) / METERS_PER_PIXEL);
+          int py = (int)((cy * CELL_SIZE_M) / METERS_PER_PIXEL);
+          long pos = 8 + ((long)py * bytesPerRow) + (px / 8);
+          if (file.seek(pos)) {
+             uint8_t b = file.read();
+             if ((b >> (7 - (px % 8))) & 0x01) setCoarseObstacle(cx, cy, true);
+          }
+       }
+     }
+     Serial.println("[MAP] Coarse map générée en RAM");
+  }
+  file.close();
   return true;
 }
 
@@ -252,82 +283,63 @@ void handleArUcoDetection(int arucoId) {
 
 String uartBuffer = "";
 
-void sendToArduino(String cmd) {
-  Serial2.println(cmd);
-  Serial.println("[UART→] " + cmd);
+void sendToArduinoBinary(uint8_t action, int32_t arg = 0) {
+  CommandPacket cmd;
+  cmd.header = 0xAA;
+  cmd.action = action;
+  cmd.arg = arg;
+  Serial2.write((uint8_t*)&cmd, sizeof(CommandPacket));
 }
 
-void processArduinoMessage(String msg) {
-  msg.trim();
-  if (msg.length() == 0) return;
+void sendToArduino(String cmd) {
+  if (cmd == "FWD") sendToArduinoBinary(1);
+  else if (cmd == "BACK") sendToArduinoBinary(2);
+  else if (cmd == "LEFT") sendToArduinoBinary(3);
+  else if (cmd == "RIGHT") sendToArduinoBinary(4);
+  else if (cmd == "STOP") sendToArduinoBinary(5);
+  else if (cmd.startsWith("UNLOCK:")) sendToArduinoBinary(6, cmd.substring(7).toInt());
+  else if (cmd == "SERVO:OPEN") sendToArduinoBinary(7);
+  else if (cmd == "SERVO:CLOSE") sendToArduinoBinary(8);
+  else if (cmd.startsWith("LCD:")) {
+    String txt = cmd.substring(4);
+    if(txt == "Code OK!") sendToArduinoBinary(9, 1);
+    else if(txt == "Code faux!") sendToArduinoBinary(9, 2);
+    else if(txt == "Entrez le code") sendToArduinoBinary(9, 3);
+    else if(txt.startsWith("Code: ")) sendToArduinoBinary(9, 4);
+  }
+}
 
-  Serial.println("[UART←] " + msg);
-
-  // Format: SENSORS:L,R,F,B,ANGLE (l'angle est optionnel/nouveau)
-  if (msg.startsWith("SENSORS:")) {
-    String data = msg.substring(8);
-    float vals[5] = {0, 0, 0, 0, 0};
-    int idx = 0;
-    int start = 0;
-    for (int i = 0; i <= (int)data.length() && idx < 5; i++) {
-      if (i == (int)data.length() || data[i] == ',') {
-        vals[idx++] = data.substring(start, i).toFloat();
-        start = i + 1;
-      }
-    }
-    if (idx >= 4) {
-      distLeft  = (int)vals[0];
-      distRight = (int)vals[1];
-      distFront = (int)vals[2];
-      distBack  = (int)vals[3];
-    }
-    if (idx == 5) {
-      float currentImuRaw = vals[4];
-      static float lastImuRaw = 0.0;
-      float deltaAngle = currentImuRaw - lastImuRaw;
-      lastImuRaw = currentImuRaw;
-      
-      // Intégrer la variation du gyroscope dans l'angle global
-      robotAngle += deltaAngle;
-      
-      // Garder l'angle entre 0 et 360
-      while (robotAngle >= 360.0) robotAngle -= 360.0;
-      while (robotAngle < 0.0) robotAngle += 360.0;
-    }
-  }
-  // Format: BUTTON:0 ou BUTTON:1
-  else if (msg.startsWith("BUTTON:")) {
-    platPresent = (msg.substring(7).toInt() == 1);
-    Serial.printf("[BUTTON] Plat %s\n", platPresent ? "PRÉSENT" : "ABSENT");
-
-    // Si on attendait la livraison et le plat a été retiré
-    if (missionState == WAITING_DELIVERY && !platPresent) {
-      deliveryConfirmed();
-    }
-  }
-  // Format: OBSTACLE
-  else if (msg == "OBSTACLE") {
-    Serial.println("[SÉCURITÉ] Obstacle détecté par Arduino → Arrêt");
-    // L'Arduino gère déjà l'arrêt, on met à jour l'état
-  }
-  // Format: DOOR_OPENED
-  else if (msg == "DOOR_OPENED") {
-    Serial.println("[SÉCURITÉ] Porte du casier ouverte par le résident");
-  }
-  // Format: ARRIVED
-  else if (msg == "ARRIVED") {
-    Serial.println("[NAV] Arduino confirme : position atteinte");
+void processArduinoMessageBinary(SensorPacket& sp) {
+  distLeft = sp.distLeft;
+  distRight = sp.distRight;
+  distFront = sp.distFront;
+  distBack = sp.distBack;
+  
+  float currentImuRaw = sp.imuAngle;
+  static float lastImuRaw = 0.0;
+  float deltaAngle = currentImuRaw - lastImuRaw;
+  lastImuRaw = currentImuRaw;
+  robotAngle += deltaAngle;
+  while (robotAngle >= 360.0) robotAngle -= 360.0;
+  while (robotAngle < 0.0) robotAngle += 360.0;
+  
+  platPresent = (sp.buttonState == 1);
+  
+  if (sp.event == 1) Serial.println("[SÉCURITÉ] Obstacle !");
+  else if (sp.event == 2) {
+     Serial.println("[SÉCURITÉ] Porte ouverte !");
+     if (missionState == WAITING_DELIVERY && !platPresent) deliveryConfirmed();
   }
 }
 
 void readUART() {
-  while (Serial2.available()) {
-    char c = Serial2.read();
-    if (c == '\n') {
-      processArduinoMessage(uartBuffer);
-      uartBuffer = "";
-    } else if (c != '\r') {
-      uartBuffer += c;
+  if (Serial2.available() >= (int)sizeof(SensorPacket)) {
+    if (Serial2.peek() == 0xBB) {
+      SensorPacket sp;
+      Serial2.readBytes((uint8_t*)&sp, sizeof(SensorPacket));
+      processArduinoMessageBinary(sp);
+    } else {
+      Serial2.read();
     }
   }
 }
@@ -336,30 +348,56 @@ void readUART() {
 // LOGIQUE DE NAVIGATION
 // ══════════════════════════════════════════════════════════════
 
-// Décide de la prochaine action basée sur la map + état
 void navigationStep() {
   if (missionState == IDLE || missionState == WAITING_LOADING || missionState == WAITING_DELIVERY || missionState == NEEDS_CHARGE) {
-    return;  // Pas de mouvement nécessaire
-  }
-
-  // SÉCURITÉ D'ABORD : Si obstacle devant, on s'arrête (l'Arduino gère ça aussi)
-  if (distFront < 20) {
-    // L'Arduino a déjà stoppé les moteurs, pas besoin d'envoyer STOP
     return;
   }
+  if (distFront < 20) return; // Sécurité locale gérée par Uno
 
-  // Vérification via la carte : est-ce qu'il y a une ouverture à gauche ?
-  float angleRad = (robotAngle + 90.0) * PI / 180.0;
-  float checkX = robotX_m + 1.0 * cos(angleRad);
-  float checkY = robotY_m + 1.0 * sin(angleRad);
-
-  if (isObstacle(checkX, checkY)) {
-    // Couloir : l'Arduino gère le centrage avec ses ultrason
-    sendToArduino("FWD");
+  float targetX = 0, targetY = 0;
+  bool foundTarget = false;
+  int aid = (missionState == RETURNING_HOME) ? ARUCO_KITCHEN : targetArUco;
+  
+  for(int i=0; i<NB_BALISES; i++) {
+    if(balises[i].id == aid) { targetX = balises[i].x_m; targetY = balises[i].y_m; foundTarget = true; break;}
+  }
+  
+  if(!foundTarget) {
+     sendToArduino("FWD"); // Fallback
+     return;
+  }
+  
+  static unsigned long lastAstar = 0;
+  if(millis() - lastAstar > 2000) { 
+    lastAstar = millis();
+    computeAStarPath(robotX_m, robotY_m, targetX, targetY);
+  }
+  
+  if(pathLength > 1 && currentPathIdx < pathLength) {
+     float wpX = currentPath[currentPathIdx].x * CELL_SIZE_M;
+     float wpY = currentPath[currentPathIdx].y * CELL_SIZE_M;
+     
+     float dx = wpX - robotX_m;
+     float dy = wpY - robotY_m;
+     float dist = sqrt(dx*dx + dy*dy);
+     
+     if (dist < 0.3) {
+        currentPathIdx++; 
+     } else {
+        float angleCible = atan2(dy, dx) * 180.0 / PI;
+        float erreurAngle = angleCible - robotAngle;
+        while(erreurAngle > 180.0) erreurAngle -= 360.0;
+        while(erreurAngle < -180.0) erreurAngle += 360.0;
+        
+        if (abs(erreurAngle) > 20.0) {
+           if (erreurAngle > 0) sendToArduino("RIGHT");
+           else sendToArduino("LEFT");
+        } else {
+           sendToArduino("FWD");
+        }
+     }
   } else {
-    // Intersection/ouverture : décision selon la destination
-    // Pour l'instant : continuer tout droit (l'Arduino suit le mur droit)
-    sendToArduino("FWD");
+     sendToArduino("FWD"); // Fallback
   }
 }
 
@@ -420,6 +458,15 @@ void startMission(String orderId, String room) {
   String json;
   serializeJson(doc, json);
   webSocket.broadcastTXT(json);
+
+  // Informer du code de livraison
+  StaticJsonDocument<256> codeDoc;
+  codeDoc["action"] = "order_code";
+  codeDoc["order_id"] = orderId;
+  codeDoc["code"] = deliveryCode;
+  String codeJson;
+  serializeJson(codeDoc, codeJson);
+  webSocket.broadcastTXT(codeJson);
 
   // Envoyer l'Arduino en route
   sendToArduino("FWD");

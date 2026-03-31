@@ -1673,11 +1673,11 @@
           <label class="form-label">Numéro de chambre</label>
           <select class="form-select" id="patient-room">
             <option value="">-- Sélectionnez --</option>
-            <option value="101">Chambre 101 – Bâtiment A</option>
-            <option value="103">Chambre 103 – Bâtiment A</option>
-            <option value="205">Chambre 205 – Bâtiment B</option>
-            <option value="207">Chambre 207 – Bâtiment B</option>
-            <option value="302">Chambre 302 – Bâtiment A</option>
+            <option value="101">Chambre 101 (ArUco 101)</option>
+            <option value="103">Chambre 103 (ArUco 103)</option>
+            <option value="205">Chambre 205 (ArUco 205)</option>
+            <option value="207">Chambre 207 (ArUco 207)</option>
+            <option value="302">Chambre 302 (ArUco 302)</option>
           </select>
         </div>
         <div class="form-group">
@@ -1903,11 +1903,11 @@
         <div class="form-group">
           <label class="form-label">Chambre</label>
           <select class="form-select" id="o-room">
-            <option value="101">Chambre 101 – Bâtiment A</option>
-            <option value="103">Chambre 103 – Bâtiment A</option>
-            <option value="205">Chambre 205 – Bâtiment B</option>
-            <option value="207">Chambre 207 – Bâtiment B</option>
-            <option value="302">Chambre 302 – Bâtiment A</option>
+            <option value="101">Chambre 101 (ArUco 101)</option>
+            <option value="103">Chambre 103 (ArUco 103)</option>
+            <option value="205">Chambre 205 (ArUco 205)</option>
+            <option value="207">Chambre 207 (ArUco 207)</option>
+            <option value="302">Chambre 302 (ArUco 302)</option>
           </select>
         </div>
         <div class="form-row2">
@@ -2436,8 +2436,8 @@
       localStorage.setItem('espIP', ip); localStorage.setItem('espPort', port);
       setESP('connecting', 'Connexion…', ip + ':' + port);
       try {
-        // Port 80 + chemin /ws : compatible hotspot iPhone (qui bloque les ports non-standard)
-        ws = new WebSocket(`ws://${ip}/ws`);
+        // La connexion originale ignorait le port défini. 
+        ws = new WebSocket(`ws://${ip}:${port}/ws`);
         ws.onopen = () => {
           setESP('connected', 'ESP32 Connecté', ip);
           closeModal('m-esp'); toast('ESP32 connecté !', 'ok');
@@ -2536,7 +2536,16 @@
 
       // ── Robot occupé ────────────────────────────────────────────────
       if (d.action === 'robot_busy') {
-        toast(`⚠️ ${d.msg}`, 'err');
+        toast(d.msg, 'err');
+      }
+
+      // --- Nouveau : Code d'accès ---
+      if (d.action === 'order_code') {
+        const msg = `Code de déverrouillage pour la commande ${d.order_id} : ${d.code}`;
+        toast(`🔑 CODE SECRET : ${d.code}`, 'ok');
+        addNotif('🔑', '#eab308', 'Code de Livraison', msg);
+        // Affiche une grosse alerte au milieu de l'écran pour être sûr de ne pas le rater
+        alert(`🚨 NOUVELLE COMMANDE REÇUE\n\nVoici le code secret : ${d.code}\n\nCe code ouvrira le casier du robot une fois arrivé devant la porte. Gardez-le précieusement !`);
       }
     }
 
