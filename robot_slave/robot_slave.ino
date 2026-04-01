@@ -29,6 +29,7 @@ struct SensorPacket {
   int16_t imuAngle;
   uint8_t buttonState;
   uint8_t event; // 0=None, 1=Obstacle, 2=DoorOpened
+  int8_t deltaDist_cm; // Estimation de la distance parcourue en cm depuis le dernier envoi
 };
 #pragma pack(pop)
 
@@ -138,8 +139,33 @@ enum RobotMode {
 
 RobotMode currentMode = MODE_IDLE;
 bool obstacleDetected = false;
-String unlockCode = "";
 bool casierOuvert = false;
+
+// ── Watchdog UART : arrêt si aucun paquet reçu en 3 secondes ──
+unsigned long dernierPaquetRecu = 0;
+#define WATCHDOG_TIMEOUT_MS 3000
+
+// ── Timers non-bloquants (remplacent delay()) ──
+unsigned long timerNonBloquant = 0;
+enum DelayState { 
+  DELAY_NONE, 
+  DELAY_OBSTACLE_BACK, 
+  DELAY_SERVO_CLOSE, 
+  DELAY_BON_APPETIT, 
+  DELAY_BON_APPETIT_FIN,
+  // ── Évitement d'obstacle ──
+  AVOID_WAIT_5S,       // Arrêt 5 secondes devant l'obstacle
+  AVOID_PIVOT_AWAY,    // Pivoter vers le côté libre (~90°)
+  AVOID_ADVANCE,       // Avancer pour dépasser l'obstacle
+  AVOID_PIVOT_BACK,    // Pivoter pour revenir à la direction initiale
+  AVOID_FORWARD_RESUME // Avancer un peu avant de reprendre
+};
+DelayState delayState = DELAY_NONE;
+
+// ── Variables d'évitement ──
+float avoidStartAngle = 0.0;   // Angle IMU au début de l'évitement
+bool avoidGoRight = false;      // Direction d'évitement (true=droite, false=gauche)
+RobotMode modeBeforeAvoid = MODE_FORWARD; // Mode à restaurer après évitement
 
 // ══════════════════════════════════════════════════════════════
 // MOTEURS
@@ -218,26 +244,37 @@ void decisionLocale() {
 
   int diff = distLeft - distRight;
 
-  // PRIORITÉ 1: OBSTACLE DEVANT
+  // PRIORITÉ 1: OBSTACLE DEVANT → déclencher la séquence d'évitement
   if (distFront < SEUIL_OBSTACLE_AVANT) {
     if (!obstacleDetected) {
       arretUrgence();
       obstacleDetected = true;
       pendingEvent = 1; // Signal Obstacle
+      modeBeforeAvoid = currentMode; // Sauvegarder le mode actuel
       currentMode = MODE_EMERGENCY_STOP;
+      
+      // Démarrer la séquence d'évitement : attente 5s
+      delayState = AVOID_WAIT_5S;
+      timerNonBloquant = millis();
+      
+      lcd.clear(); lcd.setCursor(0, 0); lcd.print("Obstacle!");
+      lcd.setCursor(0, 1); lcd.print("Attente 5s...");
     }
     return;
   }
 
   if (obstacleDetected && distFront >= SEUIL_OBSTACLE_AVANT) {
     obstacleDetected = false;
-    if (currentMode == MODE_EMERGENCY_STOP) currentMode = MODE_FORWARD;
+    if (currentMode == MODE_EMERGENCY_STOP && delayState == DELAY_NONE) {
+      currentMode = MODE_FORWARD;
+    }
   }
 
   // PRIORITÉ 2: OBSTACLE ARRIERE
   if (distBack < SEUIL_OBSTACLE_ARRIERE && currentMode == MODE_BACKWARD) {
-    arretUrgence(); delay(200);
-    currentMode = MODE_FORWARD; cmdAvancer();
+    arretUrgence();
+    delayState = DELAY_OBSTACLE_BACK;
+    timerNonBloquant = millis();
     return;
   }
 
@@ -273,10 +310,15 @@ void applyCommand(CommandPacket cmd) {
   else if (cmd.action == 2) { currentMode = MODE_BACKWARD; cmdReculer(); }
   else if (cmd.action == 3) { currentMode = MODE_TURN_LEFT; cmdPivotGauche(); }
   else if (cmd.action == 4) { currentMode = MODE_TURN_RIGHT; cmdPivotDroite(); }
-  else if (cmd.action == 5) { currentMode = MODE_IDLE; arretUrgence(); }
+  else if (cmd.action == 5) {
+    // Si on est en évitement et qu'on reçoit STOP, annuler l'évitement
+    if (delayState >= AVOID_WAIT_5S && delayState <= AVOID_FORWARD_RESUME) {
+      delayState = DELAY_NONE;
+      obstacleDetected = false;
+    }
+    currentMode = MODE_IDLE; arretUrgence();
+  }
   else if (cmd.action == 6) { 
-    char buf[7]; sprintf(buf, "%06ld", (long)cmd.arg);
-    unlockCode = String(buf);
     currentMode = MODE_DELIVERY; arretUrgence();
     lcd.clear(); lcd.setCursor(0, 0); lcd.print("Entrez le code");
   }
@@ -284,7 +326,9 @@ void applyCommand(CommandPacket cmd) {
     monServo.attach(SERVO_PIN, 500, 2500); monServo.write(ANGLE_DEVERROUILLE); casierOuvert = true;
   }
   else if (cmd.action == 8) {
-    monServo.write(ANGLE_VERROUILLE); delay(500); monServo.detach(); casierOuvert = false;
+    monServo.write(ANGLE_VERROUILLE);
+    delayState = DELAY_SERVO_CLOSE;
+    timerNonBloquant = millis();
   }
   else if (cmd.action == 9) { // LCD
     lcd.clear(); lcd.setCursor(0, 0);
@@ -304,6 +348,7 @@ void lireUART() {
     if (Serial.peek() == 0xAA) {
       CommandPacket cmd;
       Serial.readBytes((uint8_t*)&cmd, sizeof(CommandPacket));
+      dernierPaquetRecu = millis(); // Reset watchdog
       applyCommand(cmd);
     } else {
       Serial.read(); // Jette le byte invalide
@@ -313,6 +358,7 @@ void lireUART() {
 
 void envoyerEtat() {
   if (millis() - dernierEnvoi < 50) return;  // 20Hz
+  float dt = (millis() - dernierEnvoi) / 1000.0;
   dernierEnvoi = millis();
 
   SensorPacket sp;
@@ -324,6 +370,17 @@ void envoyerEtat() {
   sp.imuAngle = (int16_t)imuAngleZ;
   sp.buttonState = digitalRead(BUTTON_PIN);
   sp.event = pendingEvent;
+
+  // ── Odométrie Simulée (Estimation logicielle) ──
+  // Si le robot avance à VITESSE_BASE (180), on suppose ~0.5 m/s maximum (pour 255)
+  int vA = (dirA == HIGH) ? vitesseA : -vitesseA;
+  int vB = (dirB == HIGH) ? vitesseB : -vitesseB;
+  float approxSpeed_ms = ((vA + vB) / 2.0) / 255.0 * 0.5; // Vitesse en m/s
+  
+  static float accum_dist_cm = 0;
+  accum_dist_cm += (approxSpeed_ms * dt) * 100.0; // Distance parcourue en cm pendant dt
+  sp.deltaDist_cm = (int8_t)accum_dist_cm; 
+  accum_dist_cm -= sp.deltaDist_cm; // On garde le reste décimal pour le prochain cycle
   
   Serial.write((uint8_t*)&sp, sizeof(SensorPacket));
   if (pendingEvent != 0) pendingEvent = 0; // Consumé
@@ -341,12 +398,9 @@ void verifierBouton() {
   if (etatActuel != dernierEtat) {
     dernierEtat = etatActuel;
     if (currentMode == MODE_DELIVERY && casierOuvert && !etatActuel) {
-      monServo.write(ANGLE_VERROUILLE); delay(500); monServo.detach(); casierOuvert = false;
-      lcd.clear(); lcd.setCursor(0, 0); lcd.print("Bon appetit !");
-      delay(2000);
-      pendingEvent = 2; // DOOR_OPENED
-      currentMode = MODE_IDLE;
-      afficherPret();
+      monServo.write(ANGLE_VERROUILLE);
+      delayState = DELAY_BON_APPETIT;
+      timerNonBloquant = millis();
     }
   }
 }
@@ -366,11 +420,150 @@ void setup() {
   afficherPret();
 
   monServo.attach(SERVO_PIN, 500, 2500);
-  monServo.write(ANGLE_VERROUILLE); delay(500); monServo.detach();
+  monServo.write(ANGLE_VERROUILLE);
+  // Note: pas de delay() bloquant ici, le servo aura le temps de bouger
+  // pendant la calibration IMU qui dure ~1.5s
+  dernierPaquetRecu = millis(); // Init watchdog
 }
 
 void loop() {
   lireUART();
+
+  // ── Machine à états non-bloquante unifiée ──
+  if (delayState != DELAY_NONE) {
+    unsigned long elapsed = millis() - timerNonBloquant;
+    switch (delayState) {
+      // === DELAY STATES CLASSIQUES ===
+      case DELAY_OBSTACLE_BACK:
+        if (elapsed >= 200) {
+          currentMode = MODE_FORWARD; cmdAvancer();
+          delayState = DELAY_NONE;
+        }
+        break;
+      case DELAY_SERVO_CLOSE:
+        if (elapsed >= 500) {
+          monServo.detach(); casierOuvert = false;
+          delayState = DELAY_NONE;
+        }
+        break;
+      case DELAY_BON_APPETIT:
+        if (elapsed >= 500) {
+          monServo.detach(); casierOuvert = false;
+          lcd.clear(); lcd.setCursor(0, 0); lcd.print("Bon appetit !");
+          timerNonBloquant = millis();
+          delayState = DELAY_BON_APPETIT_FIN;
+        }
+        break;
+      case DELAY_BON_APPETIT_FIN:
+        if (elapsed >= 2000) {
+          pendingEvent = 2; // DOOR_OPENED
+          currentMode = MODE_IDLE;
+          afficherPret();
+          delayState = DELAY_NONE;
+        }
+        break;
+
+      // === ÉVITEMENT D'OBSTACLE ===
+      case AVOID_WAIT_5S:
+        if (elapsed >= 5000) {
+          lireTousLesCapteurs();
+          if (distFront >= SEUIL_OBSTACLE_AVANT) {
+            lcd.clear(); lcd.setCursor(0, 0); lcd.print("Voie libre!");
+            obstacleDetected = false;
+            currentMode = MODE_FORWARD;
+            cmdAvancer();
+            delayState = DELAY_NONE;
+          } else {
+            avoidGoRight = (distRight > distLeft);
+            avoidStartAngle = imuAngleZ;
+            lcd.clear(); lcd.setCursor(0, 0); lcd.print("Esquive...");
+            lcd.setCursor(0, 1);
+            lcd.print(avoidGoRight ? "-> Droite" : "<- Gauche");
+            if (avoidGoRight) cmdPivotDroite();
+            else cmdPivotGauche();
+            delayState = AVOID_PIVOT_AWAY;
+            timerNonBloquant = millis();
+          }
+        }
+        break;
+        
+      case AVOID_PIVOT_AWAY:
+        {
+          float angleTurned = abs(imuAngleZ - avoidStartAngle);
+          if (angleTurned > 180.0) angleTurned = 360.0 - angleTurned;
+          if (angleTurned >= 80.0 || elapsed >= 3000) {
+            arretUrgence();
+            timerNonBloquant = millis();
+            delayState = AVOID_ADVANCE;
+          }
+        }
+        break;
+        
+      case AVOID_ADVANCE:
+        if (elapsed < 300) {
+          // Pause après pivot
+        } else {
+          cmdAvancer();
+          lireTousLesCapteurs();
+          if (distFront < SEUIL_OBSTACLE_AVANT) {
+            arretUrgence();
+            delayState = AVOID_WAIT_5S;
+            timerNonBloquant = millis();
+          }
+          else if (elapsed >= 2500) {
+            arretUrgence();
+            avoidStartAngle = imuAngleZ;
+            if (avoidGoRight) cmdPivotGauche();
+            else cmdPivotDroite();
+            timerNonBloquant = millis();
+            delayState = AVOID_PIVOT_BACK;
+          }
+        }
+        break;
+
+      case AVOID_PIVOT_BACK:
+        {
+          float angleTurned = abs(imuAngleZ - avoidStartAngle);
+          if (angleTurned > 180.0) angleTurned = 360.0 - angleTurned;
+          if (angleTurned >= 80.0 || elapsed >= 3000) {
+            arretUrgence();
+            timerNonBloquant = millis();
+            delayState = AVOID_FORWARD_RESUME;
+          }
+        }
+        break;
+
+      case AVOID_FORWARD_RESUME:
+        if (elapsed >= 300) {
+          lcd.clear(); lcd.setCursor(0, 0); lcd.print("Reprise!");
+          obstacleDetected = false;
+          currentMode = MODE_FORWARD;
+          cmdAvancer();
+          delayState = DELAY_NONE;
+        } else {
+          cmdAvancer();
+        }
+        break;
+        
+      default: break;
+    }
+    // Pendant les transitions, continuer les opérations critiques
+    lireIMU();
+    mettreAJourRampe();
+    envoyerEtat();
+    return; // Pas de décision locale pendant les transitions
+  }
+
+  // ── Watchdog UART : si aucun paquet ESP32 depuis 3s → arrêt sécurité ──
+  if (currentMode != MODE_IDLE && currentMode != MODE_DELIVERY) {
+    if (millis() - dernierPaquetRecu > WATCHDOG_TIMEOUT_MS) {
+      arretUrgence();
+      currentMode = MODE_IDLE;
+      lcd.clear(); lcd.setCursor(0, 0); lcd.print("PERTE ESP32!");
+      lcd.setCursor(0, 1); lcd.print("Arret securite");
+    }
+  }
+
   if (currentMode != MODE_DELIVERY) lireTousLesCapteurs();
   decisionLocale();
   lireIMU();

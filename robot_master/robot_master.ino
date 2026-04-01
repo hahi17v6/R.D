@@ -33,6 +33,7 @@
 #include <SPI.h>
 #include <SD.h>
 #include <Keypad.h>
+#include <esp_task_wdt.h>
 #include "AStarPathfinder.h"
 
 #pragma pack(push, 1)
@@ -50,6 +51,7 @@ struct SensorPacket {
   int16_t imuAngle;
   uint8_t buttonState;
   uint8_t event;
+  int8_t deltaDist_cm;
 };
 #pragma pack(pop)
 
@@ -134,6 +136,20 @@ int batteryLevel = 100; // Niveau de batterie simulé (%)
 String currentOrderId = "";
 String currentRoom = "";
 String deliveryCode = "";
+unsigned long missionStartTime = 0;           // Timestamp début de mission
+#define MISSION_TIMEOUT_MS (10UL * 60 * 1000) // 10 minutes max par mission
+
+// ── File d'attente de commandes (max 5) ──
+struct QueuedOrder {
+  String orderId;
+  String room;
+};
+#define MAX_QUEUE 5
+QueuedOrder orderQueue[MAX_QUEUE];
+int queueCount = 0;
+
+// ── Token d'authentification pour l'upload ──
+const String UPLOAD_TOKEN = "robot2024secure";
 
 // ── Balises ArUco connues (coordonnées en mètres) ──
 // Coordonnées converties depuis pixels via METERS_PER_PIXEL = 0.007378
@@ -316,7 +332,6 @@ void handleArUcoDetection(int arucoId) {
 // COMMUNICATION UART AVEC ARDUINO
 // ══════════════════════════════════════════════════════════════
 
-String uartBuffer = "";
 
 void sendToArduinoBinary(uint8_t action, int32_t arg = 0) {
   CommandPacket cmd;
@@ -357,6 +372,14 @@ void processArduinoMessageBinary(SensorPacket& sp) {
   robotAngle += deltaAngle;
   while (robotAngle >= 360.0) robotAngle -= 360.0;
   while (robotAngle < 0.0) robotAngle += 360.0;
+  
+  // ── Odométrie Simulée (Temps x Vitesse) ──
+  // La distance avancée (en cm) est envoyée par l'Arduino
+  float distanceAvance_m = sp.deltaDist_cm / 100.0;
+  
+  // Trigonométrie avec l'angle actuel (en radians) pour estimer la dérive (X,Y)
+  robotX_m += distanceAvance_m * cos(robotAngle * PI / 180.0);
+  robotY_m += distanceAvance_m * sin(robotAngle * PI / 180.0);
   
   platPresent = (sp.buttonState == 1);
   
@@ -452,13 +475,27 @@ String generateCode() {
 // Démarre une mission de livraison
 void startMission(String orderId, String room) {
   if (missionState != IDLE) {
-    // Robot occupé
-    StaticJsonDocument<128> doc;
-    doc["action"] = "robot_busy";
-    doc["msg"] = "Robot déjà en mission (" + currentOrderId + ")";
-    String json;
-    serializeJson(doc, json);
-    webSocket.broadcastTXT(json);
+    // Robot occupé → ajouter à la file d'attente
+    if (queueCount < MAX_QUEUE) {
+      orderQueue[queueCount++] = {orderId, room};
+      Serial.printf("[QUEUE] Commande %s ajoutée en file d'attente (position: %d)\n", orderId.c_str(), queueCount);
+      
+      StaticJsonDocument<256> doc;
+      doc["action"] = "order_queued";
+      doc["id"] = orderId;
+      doc["position"] = queueCount;
+      doc["msg"] = "En file d'attente (position " + String(queueCount) + ")";
+      String json;
+      serializeJson(doc, json);
+      webSocket.broadcastTXT(json);
+    } else {
+      StaticJsonDocument<128> doc;
+      doc["action"] = "robot_busy";
+      doc["msg"] = "File d'attente pleine (max " + String(MAX_QUEUE) + " commandes)";
+      String json;
+      serializeJson(doc, json);
+      webSocket.broadcastTXT(json);
+    }
     return;
   }
 
@@ -478,6 +515,7 @@ void startMission(String orderId, String room) {
   if (targetArUco == -1) targetArUco = room.toInt();
 
   missionState = GOING_TO_KITCHEN;
+  missionStartTime = millis(); // Démarrer le timer de timeout
 
   Serial.printf("[MISSION] Démarrage : %s → Chambre %s (ArUco Cible: %d, code: %s)\n",
     orderId.c_str(), room.c_str(), targetArUco, deliveryCode.c_str());
@@ -499,6 +537,7 @@ void startMission(String orderId, String room) {
   codeDoc["action"] = "order_code";
   codeDoc["order_id"] = orderId;
   codeDoc["code"] = deliveryCode;
+  codeDoc["room"] = room;
   String codeJson;
   serializeJson(codeDoc, codeJson);
   webSocket.broadcastTXT(codeJson);
@@ -655,6 +694,18 @@ void returnedHome() {
   String json;
   serializeJson(doc, json);
   webSocket.broadcastTXT(json);
+
+  // ── Lancer automatiquement la commande suivante de la queue ──
+  if (missionState == IDLE && queueCount > 0) {
+    QueuedOrder next = orderQueue[0];
+    // Décaler la queue
+    for (int i = 0; i < queueCount - 1; i++) {
+      orderQueue[i] = orderQueue[i + 1];
+    }
+    queueCount--;
+    Serial.printf("[QUEUE] Lancement auto de %s (restant: %d)\n", next.orderId.c_str(), queueCount);
+    startMission(next.orderId, next.room);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -701,6 +752,53 @@ void handleFileRead() {
     String json;
     serializeJson(doc, json);
     server.send(200, "application/json", json);
+    return;
+  }
+
+  // Endpoint : authentification côté serveur (PINs + staff secrets ici, pas dans le HTML)
+  if (path == "/auth") {
+    if (!server.hasArg("role")) {
+      server.send(400, "application/json", "{\"ok\":false,\"msg\":\"Missing role\"}");
+      return;
+    }
+    String role = server.arg("role");
+    
+    if (role == "staff") {
+      String user = server.arg("user");
+      String pass = server.arg("pass");
+      // Credentials staff (sécurisés côté serveur)
+      if ((user == "admin" && pass == "robot2024") || 
+          (user == "infirmier" && pass == "soins123")) {
+        server.send(200, "application/json", "{\"ok\":true}");
+      } else {
+        server.send(401, "application/json", "{\"ok\":false,\"msg\":\"Identifiants incorrects\"}");
+      }
+    }
+    else if (role == "patient") {
+      String room = server.arg("room");
+      String pin = server.arg("pin");
+      // PINs résidents (sécurisés côté serveur)
+      // Format : les 4 derniers chiffres du numéro de chambre, ou PIN personnalisé
+      struct RoomPin { const char* room; const char* pin; };
+      RoomPin roomPins[] = {
+        {"F-024", "0024"}, {"F-025", "0025"}, {"F-026", "0026"},
+        {"F-027", "0027"}, {"F-028", "0028"}, {"F-030", "0030"},
+        {"F-032", "0032"}, {"F-033", "0033"}, {"F-034", "0034"},
+        {"F-041", "0041"}, {"F-042", "0042"}
+      };
+      bool valid = false;
+      for (auto& rp : roomPins) {
+        if (room == rp.room && pin == rp.pin) { valid = true; break; }
+      }
+      if (valid) {
+        server.send(200, "application/json", "{\"ok\":true}");
+      } else {
+        server.send(401, "application/json", "{\"ok\":false,\"msg\":\"Chambre ou PIN incorrect\"}");
+      }
+    }
+    else {
+      server.send(400, "application/json", "{\"ok\":false,\"msg\":\"Invalid role\"}");
+    }
     return;
   }
 
@@ -818,6 +916,11 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
 File uploadFile;
 
 void handleFileUpload() {
+  // Vérifier le token d'authentification
+  if (!server.hasHeader("X-Auth-Token") || server.header("X-Auth-Token") != UPLOAD_TOKEN) {
+    return; // Rejeté silencieusement
+  }
+  
   HTTPUpload& upload = server.upload();
   if (upload.status == UPLOAD_FILE_START) {
     String filename = upload.filename;
@@ -887,8 +990,15 @@ void setup() {
   });
 
   server.on("/upload", HTTP_POST, []() {
+    if (!server.hasHeader("X-Auth-Token") || server.header("X-Auth-Token") != UPLOAD_TOKEN) {
+      server.send(403, "text/plain", "Non autorisé");
+      return;
+    }
     server.send(200, "text/plain", "OK");
   }, handleFileUpload);
+
+  // Collecter le header d'auth
+  server.collectHeaders("X-Auth-Token");
 
   server.onNotFound(handleFileRead);
   server.begin();
@@ -902,6 +1012,10 @@ void setup() {
   // 6. Seed random
   randomSeed(analogRead(0) + millis());
 
+  // 7. Watchdog ESP32 (30 secondes)
+  esp_task_wdt_init(30, true); // 30s timeout, reset ESP32 si bloqué
+  esp_task_wdt_add(NULL);      // Ajouter la tâche courante
+
   Serial.println("\n[PRÊT] Robot distributeur opérationnel !\n");
 }
 
@@ -911,8 +1025,12 @@ void setup() {
 
 unsigned long lastNavUpdate = 0;
 unsigned long lastPosUpdate = 0;
+unsigned long lastHeartbeat = 0;
 
 void loop() {
+  // Nourrir le watchdog ESP32
+  esp_task_wdt_reset();
+
   // Gérer les connexions
   server.handleClient();
   webSocket.loop();
@@ -923,8 +1041,50 @@ void loop() {
   // Lire le clavier 4x4 (actif uniquement en mode livraison)
   handleKeypad();
 
-  // Navigation : toutes les 200ms
   unsigned long now = millis();
+
+  // ── Heartbeat UART vers Arduino (toutes les 500ms) ──
+  // Envoie un paquet STOP silencieux pour que le watchdog Arduino reste heureux
+  if (now - lastHeartbeat > 500) {
+    lastHeartbeat = now;
+    if (missionState == IDLE || missionState == WAITING_LOADING || 
+        missionState == WAITING_DELIVERY || missionState == NEEDS_CHARGE) {
+      // En état d'attente, envoyer un heartbeat (commande STOP)
+      // Seulement si l'Arduino n'est pas en train d'éviter un obstacle
+      if (distFront >= 20) { // Pas d'obstacle devant
+        sendToArduinoBinary(5); // STOP = heartbeat silencieux
+      }
+    }
+  }
+
+  // ── Timeout de mission (10 min max) ──
+  if (missionState != IDLE && missionState != NEEDS_CHARGE) {
+    if (now - missionStartTime > MISSION_TIMEOUT_MS) {
+      Serial.println("[MISSION] ⚠ TIMEOUT — Mission annulée après 10 minutes");
+      sendToArduino("STOP");
+
+      // Nettoyer l'état de la commande
+      String timedOutOrderId = currentOrderId;
+      currentOrderId = "";
+      currentRoom = "";
+      deliveryCode = "";
+
+      StaticJsonDocument<256> doc;
+      doc["action"] = "mission_timeout";
+      doc["id"] = timedOutOrderId;
+      doc["msg"] = "Mission expirée (timeout 10 min)";
+      String json;
+      serializeJson(doc, json);
+      webSocket.broadcastTXT(json);
+
+      // Retourner à la cuisine
+      missionState = RETURNING_HOME;
+      missionStartTime = now; // Reset timer pour le retour
+      sendToArduino("FWD");
+    }
+  }
+
+  // Navigation : toutes les 200ms
   if (now - lastNavUpdate > 200) {
     lastNavUpdate = now;
     navigationStep();

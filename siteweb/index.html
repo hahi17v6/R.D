@@ -2029,11 +2029,8 @@
     const pad = n => String(n).padStart(2, '0');
     const nowTime = () => { const d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
 
-    // Staff credentials (in real use, these live in ESP32 code)
-    const STAFF_CREDS = { admin: 'robot2024', infirmier: 'soins123' };
-
-    // Room PINs — keyed by room number
-    const ROOM_PINS = { 'F-024': '0024', 'F-025': '0025', 'F-026': '0026', 'F-027': '0027', 'F-028': '0028', 'F-030': '0030', 'F-032': '0032', 'F-033': '0033', 'F-034': '0034', 'F-041': '0041', 'F-042': '0042' };
+    // Staff credentials: vérifiés côté ESP32 via /auth (pas stockés ici)
+    // Room PINs: vérifiés côté ESP32 via /auth (pas stockés ici)
 
     // Room metadata
     const ROOMS = {
@@ -2100,21 +2097,29 @@
     // ============================================================
     // AUTH
     // ============================================================
-    function loginStaff() {
+    async function loginStaff() {
       const user = document.getElementById('staff-user').value.trim();
       const pass = document.getElementById('staff-pass').value;
       const err = document.getElementById('staff-err');
-      if (STAFF_CREDS[user] && STAFF_CREDS[user] === pass) {
-        err.style.display = 'none';
-        currentUser = { role: 'staff', name: user };
-        document.getElementById('staff-label').textContent = `Connecté : ${user}`;
-        showScreen('app');
-        initStaff();
-        toast('Bienvenue, ' + user + ' !', 'ok');
-        if (espIP) connectESP();
-      } else {
+      try {
+        const res = await fetch(`/auth?role=staff&user=${encodeURIComponent(user)}&pass=${encodeURIComponent(pass)}`);
+        const data = await res.json();
+        if (data.ok) {
+          err.style.display = 'none';
+          currentUser = { role: 'staff', name: user };
+          document.getElementById('staff-label').textContent = `Connecté : ${user}`;
+          showScreen('app');
+          initStaff();
+          toast('Bienvenue, ' + user + ' !', 'ok');
+          if (espIP) connectESP();
+        } else {
+          err.style.display = 'block';
+          err.textContent = data.msg || 'Identifiants incorrects';
+          document.getElementById('staff-pass').value = '';
+        }
+      } catch (e) {
         err.style.display = 'block';
-        document.getElementById('staff-pass').value = '';
+        err.textContent = 'Erreur de connexion au robot';
       }
     }
 
@@ -2133,23 +2138,30 @@
       }
     }
 
-    function loginPatient() {
+    async function loginPatient() {
       const room = document.getElementById('patient-room').value;
       const err = document.getElementById('patient-err');
       if (!room) { err.style.display = 'block'; err.textContent = 'Sélectionnez votre chambre'; pinBuffer = ''; updatePinDisplay(); return; }
       if (pinBuffer.length < 4) { err.style.display = 'block'; err.textContent = 'Entrez votre code PIN à 4 chiffres'; pinBuffer = ''; updatePinDisplay(); return; }
-      if (ROOM_PINS[room] && ROOM_PINS[room] === pinBuffer) {
-        err.style.display = 'none';
-        currentUser = { role: 'patient', room };
-        const r = ROOMS[room];
-        document.getElementById('pt-room-display').textContent = 'Chambre ' + room;
-        document.getElementById('pt-bldg-display').textContent = r.building;
-        document.getElementById('pt-label').textContent = 'Chambre ' + room + ' – ' + r.building;
-        showScreen('patient-app');
-        renderPatientOrders();
-        toast('Bienvenue, Chambre ' + room, 'ok');
-      } else {
-        err.style.display = 'block'; err.textContent = 'Code PIN incorrect';
+      try {
+        const res = await fetch(`/auth?role=patient&room=${encodeURIComponent(room)}&pin=${encodeURIComponent(pinBuffer)}`);
+        const data = await res.json();
+        if (data.ok) {
+          err.style.display = 'none';
+          currentUser = { role: 'patient', room };
+          const r = ROOMS[room];
+          document.getElementById('pt-room-display').textContent = 'Chambre ' + room;
+          document.getElementById('pt-bldg-display').textContent = r.building;
+          document.getElementById('pt-label').textContent = 'Chambre ' + room + ' – ' + r.building;
+          showScreen('patient-app');
+          renderPatientOrders();
+          toast('Bienvenue, Chambre ' + room, 'ok');
+        } else {
+          err.style.display = 'block'; err.textContent = data.msg || 'Code PIN incorrect';
+          pinBuffer = ''; updatePinDisplay();
+        }
+      } catch (e) {
+        err.style.display = 'block'; err.textContent = 'Erreur de connexion au robot';
         pinBuffer = ''; updatePinDisplay();
       }
     }
@@ -2559,11 +2571,16 @@
 
       // --- Nouveau : Code d'accès ---
       if (d.action === 'order_code') {
-        const msg = `Code de déverrouillage pour la commande ${d.order_id} : ${d.code}`;
-        toast(`🔑 CODE SECRET : ${d.code}`, 'ok');
-        addNotif('🔑', '#eab308', 'Code de Livraison', msg);
-        // Affiche une grosse alerte au milieu de l'écran pour être sûr de ne pas le rater
-        alert(`🚨 NOUVELLE COMMANDE REÇUE\n\nVoici le code secret : ${d.code}\n\nCe code ouvrira le casier du robot une fois arrivé devant la porte. Gardez-le précieusement !`);
+        const isStaff = currentUser?.role === 'staff';
+        const isMyRoom = currentUser?.role === 'patient' && currentUser.room === d.room;
+
+        // N'afficher le code qu'au staff ou au résident concerné
+        if (isStaff || isMyRoom) {
+          const msg = `Code de déverrouillage pour la commande ${d.order_id} (Chambre ${d.room}) : ${d.code}`;
+          toast(`🔑 CODE SECRET : ${d.code}`, 'ok');
+          addNotif('🔑', '#eab308', 'Code de Livraison', msg);
+          alert(`🚨 CODE DE SÉCURITÉ\n\nCommande : ${d.order_id}\nChambre : ${d.room}\n\nVoici le code secret : ${d.code}\n\nCe code ouvrira le casier du robot une fois arrivé devant la porte.`);
+        }
       }
     }
 
