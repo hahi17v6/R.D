@@ -136,23 +136,53 @@ String currentRoom = "";
 String deliveryCode = "";
 
 // ── Balises ArUco connues (coordonnées en mètres) ──
+// Coordonnées converties depuis pixels via METERS_PER_PIXEL = 0.007378
 struct ArUcoMarker {
   int id;
   float x_m;
   float y_m;
-  float angle_mur;  // angle du mur en degrés
+  float angle_mur;  // angle du mur en degrés (à ajuster selon la pose réelle)
 };
 
 ArUcoMarker balises[] = {
-  {1, 3.98, 23.61, 90.0},
-  {2, 15.20, 50.4, 45.0},
-  // Ajoute tes balises ici quand tu les places physiquement
+  // === CHAMBRES (entrées principales) ===
+  {41,   7.45,   0.86,  0.0},   // Chambre F-041
+  {42,   7.39,   1.31,  0.0},   // Chambre F-042
+  {34,   8.16,  14.28,  0.0},   // Chambre F-034
+  {134,  8.08,  17.73,  0.0},   // Chambre F-034 (porte 2)
+  {33,   7.97,  21.30,  0.0},   // Chambre F-033
+  {32,  18.39,  36.88,  0.0},   // Chambre F-032
+  {30,  15.34,  51.49,  0.0},   // Chambre F-030
+  {29,  13.22,  54.30,  0.0},   // F-029 — Cuisine (entrée principale)
+  {129,  3.45,  54.25,  0.0},   // F-029 — Cuisine (entrée 2)
+  {28,   1.34,  41.77,  0.0},   // Chambre F-028
+  {27,   1.48,  48.54,  0.0},   // Chambre F-027 (1ère porte)
+  {127, 15.41,  44.43,  0.0},   // Chambre F-027 (2ème porte)
+  {26,   1.48,  51.21,  0.0},   // Chambre F-026
+  {25,   1.48,  48.54,  0.0},   // Chambre F-025 (1ère porte)
+  {125, 15.07,  48.71,  0.0},   // Chambre F-025 (2ème porte)
+  {24,   1.44,  51.32,  0.0},   // Chambre F-024
+
+  // === INTERSECTIONS & REPÈRES ===
+  {201,  7.78,   6.26,  0.0},   // Intersection 1
+  {202,  8.10,  11.16,  0.0},   // Avant l'Intersection 1
+  {203,  7.89,  20.45,  0.0},   // Local technique
+  {204,  8.69,  34.85,  0.0},   // Intersection 2
+  {205, 10.86,  35.64,  0.0},   // Intersection 3
+  {206, 16.76,  35.79,  0.0},   // Intersection 4
+  {207, 10.99,  37.02,  0.0},   // Intersection 5
+  {208, 15.20,  38.33,  0.0},   // Intersection 6
+  {209, 15.26,  53.16,  0.0},   // Avant l'Intersection 2
+  {210, 15.10,  35.89,  0.0},   // Début de couloir
+  {211,  1.29,  55.49,  0.0},   // Intersection 7
+  {212,  1.34,  39.31,  0.0},   // Porte random 1
+  {213,  1.46,   5.90,  0.0},   // Porte random 2
 };
 const int NB_BALISES = sizeof(balises) / sizeof(balises[0]);
 
 // --- Cibles ArUco de Mission ---
 const int ARUCO_HOME = 0;     // ID ArUco du point de départ
-const int ARUCO_KITCHEN = 50; // ID ArUco de la cuisine
+const int ARUCO_KITCHEN = 29; // ID ArUco de la cuisine (F-029 entrée principale)
 int targetArUco = -1;         // ID ArUco de la chambre de destination actuelle
 
 struct RoomArUco {
@@ -160,14 +190,19 @@ struct RoomArUco {
   int arucoId;
 };
 
-// Registre associant le nom de la chambre à son ID ArUco spécifique
+// Registre associant le nom de la chambre à son ID ArUco
 RoomArUco roomRegistry[] = {
-  {"101", 101},
-  {"103", 103},
-  {"205", 205},
-  {"207", 207},
-  {"302", 302}
-  // Ajoute d'autres chambres ici
+  {"F-041", 41},
+  {"F-042", 42},
+  {"F-034", 34},
+  {"F-033", 33},
+  {"F-032", 32},
+  {"F-030", 30},
+  {"F-028", 28},
+  {"F-027", 27},
+  {"F-026", 26},
+  {"F-025", 25},
+  {"F-024", 24}
 };
 const int NB_ROOMS = sizeof(roomRegistry) / sizeof(roomRegistry[0]);
 
