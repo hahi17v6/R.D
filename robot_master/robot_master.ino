@@ -122,7 +122,7 @@ bool platPresent = false;
 
 // État de mission
 enum MissionState {
-  IDLE,              // Pas de mission
+  MISSION_IDLE,              // Pas de mission
   GOING_TO_KITCHEN,  // En route vers la cuisine
   WAITING_LOADING,   // À la cuisine, attend chargement
   GOING_TO_ROOM,     // En route vers la chambre
@@ -131,7 +131,7 @@ enum MissionState {
   NEEDS_CHARGE       // Batterie faible, à la cuisine, en charge
 };
 
-MissionState missionState = IDLE;
+MissionState missionState = MISSION_IDLE;
 int batteryLevel = 100; // Niveau de batterie simulé (%)
 String currentOrderId = "";
 String currentRoom = "";
@@ -147,9 +147,6 @@ struct QueuedOrder {
 #define MAX_QUEUE 5
 QueuedOrder orderQueue[MAX_QUEUE];
 int queueCount = 0;
-
-// ── Token d'authentification pour l'upload ──
-const String UPLOAD_TOKEN = "robot2024secure";
 
 // ── Balises ArUco connues (coordonnées en mètres) ──
 // Coordonnées converties depuis pixels via METERS_PER_PIXEL = 0.007378
@@ -293,7 +290,7 @@ void handleArUcoDetection(int arucoId) {
         arucoId, oldX, oldY, robotX_m, robotY_m);
 
       // Envoyer la position recalibrée au dashboard via WebSocket
-      StaticJsonDocument<256> doc;
+      JsonDocument doc;
       doc["action"] = "robot_pos";
       doc["x"] = robotX_m;
       doc["y"] = robotY_m;
@@ -407,7 +404,7 @@ void readUART() {
 // ══════════════════════════════════════════════════════════════
 
 void navigationStep() {
-  if (missionState == IDLE || missionState == WAITING_LOADING || missionState == WAITING_DELIVERY || missionState == NEEDS_CHARGE) {
+  if (missionState == MISSION_IDLE || missionState == WAITING_LOADING || missionState == WAITING_DELIVERY || missionState == NEEDS_CHARGE) {
     return;
   }
   if (distFront < 20) return; // Sécurité locale gérée par Uno
@@ -474,13 +471,13 @@ String generateCode() {
 
 // Démarre une mission de livraison
 void startMission(String orderId, String room) {
-  if (missionState != IDLE) {
+  if (missionState != MISSION_IDLE) {
     // Robot occupé → ajouter à la file d'attente
     if (queueCount < MAX_QUEUE) {
       orderQueue[queueCount++] = {orderId, room};
       Serial.printf("[QUEUE] Commande %s ajoutée en file d'attente (position: %d)\n", orderId.c_str(), queueCount);
       
-      StaticJsonDocument<256> doc;
+      JsonDocument doc;
       doc["action"] = "order_queued";
       doc["id"] = orderId;
       doc["position"] = queueCount;
@@ -489,7 +486,7 @@ void startMission(String orderId, String room) {
       serializeJson(doc, json);
       webSocket.broadcastTXT(json);
     } else {
-      StaticJsonDocument<128> doc;
+      JsonDocument doc;
       doc["action"] = "robot_busy";
       doc["msg"] = "File d'attente pleine (max " + String(MAX_QUEUE) + " commandes)";
       String json;
@@ -521,7 +518,7 @@ void startMission(String orderId, String room) {
     orderId.c_str(), room.c_str(), targetArUco, deliveryCode.c_str());
 
   // Informer le dashboard
-  StaticJsonDocument<256> doc;
+  JsonDocument doc;
   doc["action"] = "robot_status";
   doc["name"] = "Robot Alpha";
   doc["status"] = "En mission";
@@ -533,7 +530,7 @@ void startMission(String orderId, String room) {
   webSocket.broadcastTXT(json);
 
   // Informer du code de livraison
-  StaticJsonDocument<256> codeDoc;
+  JsonDocument codeDoc;
   codeDoc["action"] = "order_code";
   codeDoc["order_id"] = orderId;
   codeDoc["code"] = deliveryCode;
@@ -553,7 +550,7 @@ void arrivedAtKitchen() {
 
   Serial.println("[MISSION] Arrivé à la cuisine — en attente de chargement");
 
-  StaticJsonDocument<256> doc;
+  JsonDocument doc;
   doc["action"] = "status_update";
   doc["id"] = currentOrderId;
   doc["status"] = "En attente chargement";
@@ -582,7 +579,7 @@ void arrivedAtRoom() {
   sendToArduino("UNLOCK:" + deliveryCode);
 
   // Informer le dashboard
-  StaticJsonDocument<256> doc;
+  JsonDocument doc;
   doc["action"] = "status_update";
   doc["id"] = currentOrderId;
   doc["status"] = "En cours";
@@ -643,7 +640,7 @@ void handleKeypad() {
 void deliveryConfirmed() {
   Serial.printf("[MISSION] Livraison confirmée pour %s\n", currentOrderId.c_str());
 
-  StaticJsonDocument<256> doc;
+  JsonDocument doc;
   doc["action"] = "delivery_confirmed";
   doc["id"] = currentOrderId;
   doc["status"] = "Livrée";
@@ -667,7 +664,7 @@ void returnedHome() {
   deliveryCode = "";
   sendToArduino("STOP");
 
-  StaticJsonDocument<256> doc;
+  JsonDocument doc;
   doc["action"] = "robot_status";
   doc["name"] = "Robot Alpha";
   doc["battery"] = batteryLevel;
@@ -677,7 +674,7 @@ void returnedHome() {
     doc["status"] = "Batterie faible - En charge";
     
     // Alerte au dashboard (pour le cuisinier)
-    StaticJsonDocument<256> alertDoc;
+    JsonDocument alertDoc;
     alertDoc["action"] = "alert";
     alertDoc["msg"] = "Robot déchargé ! Veuillez le brancher à la cuisine.";
     String alertJson;
@@ -686,7 +683,7 @@ void returnedHome() {
 
     Serial.println("[MISSION] De retour à la cuisine — BATTERIE FAIBLE, robot en veille/charge");
   } else {
-    missionState = IDLE;
+    missionState = MISSION_IDLE;
     doc["status"] = "Disponible";
     Serial.println("[MISSION] De retour à la cuisine — Robot disponible pour une nouvelle commande");
   }
@@ -696,7 +693,7 @@ void returnedHome() {
   webSocket.broadcastTXT(json);
 
   // ── Lancer automatiquement la commande suivante de la queue ──
-  if (missionState == IDLE && queueCount > 0) {
+  if (missionState == MISSION_IDLE && queueCount > 0) {
     QueuedOrder next = orderQueue[0];
     // Décaler la queue
     for (int i = 0; i < queueCount - 1; i++) {
@@ -741,7 +738,7 @@ void handleFileRead() {
 
   // Endpoint : état du robot (pour le téléphone)
   if (path == "/status") {
-    StaticJsonDocument<256> doc;
+    JsonDocument doc;
     doc["state"] = (int)missionState;
     doc["x"] = robotX_m;
     doc["y"] = robotY_m;
@@ -829,23 +826,23 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
     case WStype_CONNECTED: {
       Serial.printf("[WS] Client #%u connecté\n", num);
       // Envoyer l'état actuel du robot
-      StaticJsonDocument<256> doc;
+      JsonDocument doc;
       doc["action"] = "robot_status";
       doc["name"] = "Robot Alpha";
       
       if (missionState == NEEDS_CHARGE) doc["status"] = "En charge (Batterie faible)";
-      else if (missionState == IDLE) doc["status"] = "Disponible";
+      else if (missionState == MISSION_IDLE) doc["status"] = "Disponible";
       else doc["status"] = "En mission";
 
       doc["battery"] = batteryLevel;
-      if (missionState != IDLE && missionState != NEEDS_CHARGE) doc["order_id"] = currentOrderId;
+      if (missionState != MISSION_IDLE && missionState != NEEDS_CHARGE) doc["order_id"] = currentOrderId;
       String json;
       serializeJson(doc, json);
       webSocket.sendTXT(num, json);
 
       // Envoyer les infos de la carte si chargée
       if (mapLoaded) {
-        StaticJsonDocument<128> mapDoc;
+        JsonDocument mapDoc;
         mapDoc["action"] = "map_info";
         mapDoc["width"] = MAP_WIDTH;
         mapDoc["height"] = MAP_HEIGHT;
@@ -862,7 +859,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
       break;
 
     case WStype_TEXT: {
-      StaticJsonDocument<512> doc;
+      JsonDocument doc;
       DeserializationError err = deserializeJson(doc, payload);
       if (err) {
         Serial.println("[WS] JSON invalide");
@@ -895,7 +892,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
       else if (action == "order_cancelled") {
         // Commande annulée
         if (currentOrderId == doc["id"].as<String>()) {
-          missionState = IDLE;
+          missionState = MISSION_IDLE;
           currentOrderId = "";
           sendToArduino("STOP");
           Serial.println("[MISSION] Annulée");
@@ -906,34 +903,6 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
 
     default:
       break;
-  }
-}
-
-// ══════════════════════════════════════════════════════════════
-// UPLOAD DE FICHIERS (pour le script deploy_to_esp32.py)
-// ══════════════════════════════════════════════════════════════
-
-File uploadFile;
-
-void handleFileUpload() {
-  // Vérifier le token d'authentification
-  if (!server.hasHeader("X-Auth-Token") || server.header("X-Auth-Token") != UPLOAD_TOKEN) {
-    return; // Rejeté silencieusement
-  }
-  
-  HTTPUpload& upload = server.upload();
-  if (upload.status == UPLOAD_FILE_START) {
-    String filename = upload.filename;
-    if (!filename.startsWith("/")) filename = "/" + filename;
-    Serial.println("[UPLOAD] Réception : " + filename);
-    uploadFile = SD.open(filename, FILE_WRITE);
-  } else if (upload.status == UPLOAD_FILE_WRITE) {
-    if (uploadFile) uploadFile.write(upload.buf, upload.currentSize);
-  } else if (upload.status == UPLOAD_FILE_END) {
-    if (uploadFile) {
-      uploadFile.close();
-      Serial.printf("[UPLOAD] Terminé : %u octets\n", upload.totalSize);
-    }
   }
 }
 
@@ -983,23 +952,6 @@ void setup() {
   }
 
   // 4. Routes du serveur
-  server.on("/mkdir", HTTP_POST, []() {
-    String dir = server.arg("path");
-    if (SD.mkdir(dir)) server.send(200, "text/plain", "OK");
-    else server.send(500, "text/plain", "Erreur");
-  });
-
-  server.on("/upload", HTTP_POST, []() {
-    if (!server.hasHeader("X-Auth-Token") || server.header("X-Auth-Token") != UPLOAD_TOKEN) {
-      server.send(403, "text/plain", "Non autorisé");
-      return;
-    }
-    server.send(200, "text/plain", "OK");
-  }, handleFileUpload);
-
-  // Collecter le header d'auth
-  server.collectHeaders("X-Auth-Token");
-
   server.onNotFound(handleFileRead);
   server.begin();
   Serial.println("[WEB] Serveur HTTP démarré sur port 80");
@@ -1013,7 +965,12 @@ void setup() {
   randomSeed(analogRead(0) + millis());
 
   // 7. Watchdog ESP32 (30 secondes)
-  esp_task_wdt_init(30, true); // 30s timeout, reset ESP32 si bloqué
+  esp_task_wdt_config_t twdt_config = {
+      .timeout_ms = 30000,
+      .idle_core_mask = (1 << 2) - 1, // Monitor max 2 cores
+      .trigger_panic = true,
+  };
+  esp_task_wdt_init(&twdt_config);
   esp_task_wdt_add(NULL);      // Ajouter la tâche courante
 
   Serial.println("\n[PRÊT] Robot distributeur opérationnel !\n");
@@ -1047,7 +1004,7 @@ void loop() {
   // Envoie un paquet STOP silencieux pour que le watchdog Arduino reste heureux
   if (now - lastHeartbeat > 500) {
     lastHeartbeat = now;
-    if (missionState == IDLE || missionState == WAITING_LOADING || 
+    if (missionState == MISSION_IDLE || missionState == WAITING_LOADING || 
         missionState == WAITING_DELIVERY || missionState == NEEDS_CHARGE) {
       // En état d'attente, envoyer un heartbeat (commande STOP)
       // Seulement si l'Arduino n'est pas en train d'éviter un obstacle
@@ -1058,7 +1015,7 @@ void loop() {
   }
 
   // ── Timeout de mission (10 min max) ──
-  if (missionState != IDLE && missionState != NEEDS_CHARGE) {
+  if (missionState != MISSION_IDLE && missionState != NEEDS_CHARGE) {
     if (now - missionStartTime > MISSION_TIMEOUT_MS) {
       Serial.println("[MISSION] ⚠ TIMEOUT — Mission annulée après 10 minutes");
       sendToArduino("STOP");
@@ -1069,7 +1026,7 @@ void loop() {
       currentRoom = "";
       deliveryCode = "";
 
-      StaticJsonDocument<256> doc;
+      JsonDocument doc;
       doc["action"] = "mission_timeout";
       doc["id"] = timedOutOrderId;
       doc["msg"] = "Mission expirée (timeout 10 min)";
@@ -1093,8 +1050,8 @@ void loop() {
   // Envoyer la position au dashboard : toutes les 2s
   if (now - lastPosUpdate > 2000) {
     lastPosUpdate = now;
-    if (missionState != IDLE) {
-      StaticJsonDocument<128> doc;
+    if (missionState != MISSION_IDLE) {
+      JsonDocument doc;
       doc["action"] = "robot_pos";
       doc["x"] = robotX_m / METERS_PER_PIXEL;  // en pixels pour la mini-carte
       doc["y"] = robotY_m / METERS_PER_PIXEL;
