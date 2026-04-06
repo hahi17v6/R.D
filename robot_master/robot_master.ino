@@ -247,28 +247,6 @@ bool initMap() {
   return true;
 }
 
-// Retourne true si (x_m, y_m) est un obstacle (mur) sur la carte
-bool isObstacle(float x_m, float y_m) {
-  int px = (int)(x_m / METERS_PER_PIXEL);
-  int py = (int)(y_m / METERS_PER_PIXEL);
-  if (px < 0 || px >= (int)MAP_WIDTH || py < 0 || py >= (int)MAP_HEIGHT)
-    return true;
-
-  File file = SD.open(MAP_FILENAME);
-  if (!file)
-    return true;
-
-  long pos = 8 + ((long)py * bytesPerRow) + (px / 8);
-  if (file.seek(pos)) {
-    uint8_t byteVal = file.read();
-    file.close();
-    int bitIdx = 7 - (px % 8);
-    return (byteVal >> bitIdx) & 0x01;
-  }
-  file.close();
-  return true;
-}
-
 // ══════════════════════════════════════════════════════════════
 // ARUCO — RECALIBRATION DE POSITION
 // ══════════════════════════════════════════════════════════════
