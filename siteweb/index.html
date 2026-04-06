@@ -1673,17 +1673,17 @@
           <label class="form-label">Numéro de chambre</label>
           <select class="form-select" id="patient-room">
             <option value="">Sélectionnez votre chambre</option>
-            <option value="F-024">Chambre F-024 (ArUco 24)</option>
-            <option value="F-025">Chambre F-025 (ArUco 25)</option>
-            <option value="F-026">Chambre F-026 (ArUco 26)</option>
-            <option value="F-027">Chambre F-027 (ArUco 27)</option>
-            <option value="F-028">Chambre F-028 (ArUco 28)</option>
-            <option value="F-030">Chambre F-030 (ArUco 30)</option>
-            <option value="F-032">Chambre F-032 (ArUco 32)</option>
-            <option value="F-033">Chambre F-033 (ArUco 33)</option>
-            <option value="F-034">Chambre F-034 (ArUco 34)</option>
-            <option value="F-041">Chambre F-041 (ArUco 41)</option>
-            <option value="F-042">Chambre F-042 (ArUco 42)</option>
+            <option value="F-024">Chambre F-024 (ArUco 1)</option>
+            <option value="F-025">Chambre F-025 (ArUco 2)</option>
+            <option value="F-026">Chambre F-026 (ArUco 4)</option>
+            <option value="F-027">Chambre F-027 (ArUco 5)</option>
+            <option value="F-028">Chambre F-028 (ArUco 7)</option>
+            <option value="F-030">Chambre F-030 (ArUco 10)</option>
+            <option value="F-032">Chambre F-032 (ArUco 11)</option>
+            <option value="F-033">Chambre F-033 (ArUco 12)</option>
+            <option value="F-034">Chambre F-034 (ArUco 13)</option>
+            <option value="F-041">Chambre F-041 (ArUco 15)</option>
+            <option value="F-042">Chambre F-042 (ArUco 16)</option>
           </select>
         </div>
         <div class="form-group">
@@ -1909,17 +1909,17 @@
         <div class="form-group">
           <label class="form-label">Chambre</label>
           <select class="form-select" id="o-room">
-            <option value="F-024">Chambre F-024 (ArUco 24)</option>
-            <option value="F-025">Chambre F-025 (ArUco 25)</option>
-            <option value="F-026">Chambre F-026 (ArUco 26)</option>
-            <option value="F-027">Chambre F-027 (ArUco 27)</option>
-            <option value="F-028">Chambre F-028 (ArUco 28)</option>
-            <option value="F-030">Chambre F-030 (ArUco 30)</option>
-            <option value="F-032">Chambre F-032 (ArUco 32)</option>
-            <option value="F-033">Chambre F-033 (ArUco 33)</option>
-            <option value="F-034">Chambre F-034 (ArUco 34)</option>
-            <option value="F-041">Chambre F-041 (ArUco 41)</option>
-            <option value="F-042">Chambre F-042 (ArUco 42)</option>
+            <option value="F-024">Chambre F-024 (ArUco 1)</option>
+            <option value="F-025">Chambre F-025 (ArUco 2)</option>
+            <option value="F-026">Chambre F-026 (ArUco 4)</option>
+            <option value="F-027">Chambre F-027 (ArUco 5)</option>
+            <option value="F-028">Chambre F-028 (ArUco 7)</option>
+            <option value="F-030">Chambre F-030 (ArUco 10)</option>
+            <option value="F-032">Chambre F-032 (ArUco 11)</option>
+            <option value="F-033">Chambre F-033 (ArUco 12)</option>
+            <option value="F-034">Chambre F-034 (ArUco 13)</option>
+            <option value="F-041">Chambre F-041 (ArUco 15)</option>
+            <option value="F-042">Chambre F-042 (ArUco 16)</option>
           </select>
         </div>
         <div class="form-row2">
@@ -2357,7 +2357,7 @@
       const time = document.getElementById('o-time').value;
       const desc = document.getElementById('o-desc').value.trim();
       if (!desc) { toast('Description requise', 'err'); return; }
-      const targetArucos = { "F-024": 24, "F-025": 25, "F-026": 26, "F-027": 27, "F-028": 28, "F-030": 30, "F-032": 32, "F-033": 33, "F-034": 34, "F-041": 41, "F-042": 42 };
+      const targetArucos = { "F-024": 1, "F-025": 2, "F-026": 4, "F-027": 5, "F-028": 7, "F-030": 10, "F-032": 11, "F-033": 12, "F-034": 13, "F-041": 15, "F-042": 16 };
       const o = { id: `#CMD${String(cmdIdx).padStart(3, '0')}`, room, aruco: targetArucos[room] || parseInt(room), type, desc, status: 'En attente', time: time || '--:--', robot: null, createdAt: time || nowTime(), pickedAt: null, deliveredAt: null };
       cmdIdx++;
       orders.unshift(o);
@@ -2440,7 +2440,7 @@
       const type = document.getElementById('pt-type').value;
       const desc = document.getElementById('pt-desc').value.trim();
       if (!desc) { toast('Description requise', 'err'); return; }
-      const targetArucos = { "F-024": 24, "F-025": 25, "F-026": 26, "F-027": 27, "F-028": 28, "F-030": 30, "F-032": 32, "F-033": 33, "F-034": 34, "F-041": 41, "F-042": 42 };
+      const targetArucos = { "F-024": 1, "F-025": 2, "F-026": 4, "F-027": 5, "F-028": 7, "F-030": 10, "F-032": 11, "F-033": 12, "F-034": 13, "F-041": 15, "F-042": 16 };
       const o = { id: `#CMD${String(cmdIdx).padStart(3, '0')}`, room, aruco: targetArucos[room] || parseInt(room), type, desc, status: 'En attente', time: nowTime(), robot: null, createdAt: nowTime(), pickedAt: null, deliveredAt: null };
       cmdIdx++;
       orders.unshift(o);
