@@ -71,8 +71,8 @@ const char *ssid_ap = "Robot-WiFi";
 const char *password_ap = "12345678";
 
 // --- WiFi Station (optionnel, pour internet) ---
-const char *ssid_sta = "iPhone";
-const char *password_sta = "123444567";
+const char *ssid_sta = "Redmi Note 13";
+const char *password_sta = "tu veux de la co";
 
 // --- Serveurs ---
 WebServer server(80);
@@ -230,6 +230,8 @@ bool initMap() {
 
   if (allocateCoarseMap(realW, realH)) {
     for (int cy = 0; cy < coarseH; cy++) {
+      // Nourrir le watchdog à chaque ligne pour éviter le reboot
+      esp_task_wdt_reset();
       for (int cx = 0; cx < coarseW; cx++) {
         int px = (int)((cx * CELL_SIZE_M) / METERS_PER_PIXEL);
         int py = (int)((cy * CELL_SIZE_M) / METERS_PER_PIXEL);
@@ -968,30 +970,36 @@ void setup() {
   } else {
     Serial.printf("[SD] Carte SD OK (taille: %llu Mo)\n",
                   SD.cardSize() / (1024 * 1024));
-    mapLoaded = initMap();
+    // La carte est chargée plus bas dans le code pour sauver la RAM
   }
 
   // 3. WiFi
   WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(ssid_ap, password_ap);
-  Serial.printf("[WiFi] AP démarré : %s → IP: %s\n", ssid_ap,
-                WiFi.softAPIP().toString().c_str());
 
+  // ÉTAPE A : Se connecter d'abord au Station (iPhone) pour forcer le bon canal
+  // radio
   WiFi.begin(ssid_sta, password_sta);
   Serial.printf("[WiFi] Connexion à %s", ssid_sta);
   int retries = 0;
-  while (WiFi.status() != WL_CONNECTED && retries < 20) {
+  while (WiFi.status() != WL_CONNECTED && retries < 10) {
     delay(500);
     Serial.print(".");
     retries++;
   }
   Serial.println();
+
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf("[WiFi] Connecté ! IP locale: %s\n",
                   WiFi.localIP().toString().c_str());
   } else {
     Serial.println("[WiFi] Pas de connexion internet (AP seul actif)");
   }
+
+  // ÉTAPE B : Démarrer le Point d'Accès ensuite (il utilisera le même canal
+  // sans planter)
+  WiFi.softAP(ssid_ap, password_ap);
+  Serial.printf("[WiFi] AP démarré : %s → IP: %s\n", ssid_ap,
+                WiFi.softAPIP().toString().c_str());
 
   // 4. Routes du serveur
   server.onNotFound(handleFileRead);
@@ -1006,14 +1014,15 @@ void setup() {
   // 6. Seed random
   randomSeed(analogRead(0) + millis());
 
-  // 7. Watchdog ESP32 (30 secondes)
-  esp_task_wdt_config_t twdt_config = {
-      .timeout_ms = 30000,
-      .idle_core_mask = (1 << 2) - 1, // Monitor max 2 cores
-      .trigger_panic = true,
-  };
-  esp_task_wdt_init(&twdt_config);
-  esp_task_wdt_add(NULL); // Ajouter la tâche courante
+  // 7. Désactiver le watchdog sur la tâche principale
+  // (ESP32 Core 2.x l'active par défaut avec 5s, ce qui fait planter
+  //  la lecture SD et les tentatives WiFi longues)
+  esp_task_wdt_delete(NULL);
+
+  // --- CHARGEMENT DE LA MAP EN DERNIER ---
+  // On charge la map à la fin pour s'assurer que le WiFi, le Serveur Web
+  // et les WebSockets ont bien pu réserver leur RAM prioritairement !
+  mapLoaded = initMap();
 
   Serial.println("\n[PRÊT] Robot distributeur opérationnel !\n");
 }
@@ -1027,8 +1036,7 @@ unsigned long lastPosUpdate = 0;
 unsigned long lastHeartbeat = 0;
 
 void loop() {
-  // Nourrir le watchdog ESP32
-  esp_task_wdt_reset();
+  // Pas de watchdog ESP32 sur la boucle principale
 
   // Gérer les connexions
   server.handleClient();

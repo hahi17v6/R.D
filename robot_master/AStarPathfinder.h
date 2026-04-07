@@ -3,9 +3,9 @@
 
 #include <Arduino.h>
 
-#define CELL_SIZE_M 0.20 // 20cm par cellule
-#define MAX_PATH 300     // Chemin max (suffisant pour partie du bâtiment)
-#define MAX_OPEN 400     // Taille max de la open list
+#define CELL_SIZE_M 0.40 // 40cm par cellule (réduit la RAM x4)
+#define MAX_PATH 200     // Chemin max
+#define MAX_OPEN 300     // Taille max de la open list
 
 struct Point {
   int x, y;
@@ -18,8 +18,7 @@ int coarseW = 0;
 int coarseH = 0;
 
 uint16_t *parentMap = nullptr;
-uint8_t *closedSet = nullptr;
-float *gScore = nullptr;
+// closedSet et gScore sont alloués temporairement pendant computeAStarPath()
 
 void freeCoarseMap() {
   if (coarseMap) {
@@ -30,14 +29,6 @@ void freeCoarseMap() {
     free(parentMap);
     parentMap = nullptr;
   }
-  if (closedSet) {
-    free(closedSet);
-    closedSet = nullptr;
-  }
-  if (gScore) {
-    free(gScore);
-    gScore = nullptr;
-  }
 }
 
 // Alloue et crée une carte de collision en RAM
@@ -45,29 +36,33 @@ bool allocateCoarseMap(float realWidthM, float realHeightM) {
   freeCoarseMap();
   coarseW = (int)(realWidthM / CELL_SIZE_M) + 1;
   coarseH = (int)(realHeightM / CELL_SIZE_M) + 1;
-  // Limite la taille pour éviter OutOfMemory (max ~30000 cellules)
-  if (coarseW * coarseH > 30000) {
-    Serial.println(
-        "[ASTAR] Map trop grande pour la RAM, on limite à 30000 cellules.");
-    if (coarseW > 173)
-      coarseW = 173;
-    if (coarseH > 173)
-      coarseH = 173;
+  // Limite à 5000 cellules pour laisser la RAM au WiFi/WebServer
+  int maxCells = 5000;
+  if (coarseW * coarseH > maxCells) {
+    Serial.printf("[ASTAR] Map trop grande, réduction à %d cellules.\n",
+                  maxCells);
+    float ratio = sqrt((float)maxCells / (coarseW * coarseH));
+    coarseW = (int)(coarseW * ratio);
+    coarseH = (int)(coarseH * ratio);
+    if (coarseW < 1)
+      coarseW = 1;
+    if (coarseH < 1)
+      coarseH = 1;
   }
 
   int mapSize = coarseW * coarseH;
+  // On alloue seulement coarseMap (obstacles) et parentMap en permanence
   coarseMap = (uint8_t *)malloc(mapSize);
   parentMap = (uint16_t *)malloc(mapSize * sizeof(uint16_t));
-  closedSet = (uint8_t *)malloc(mapSize);
-  gScore = (float *)malloc(mapSize * sizeof(float));
 
-  if (!coarseMap || !parentMap || !closedSet || !gScore) {
-    Serial.println("[ASTAR] Erreur malloc globale !");
+  if (!coarseMap || !parentMap) {
+    Serial.println("[ASTAR] Erreur malloc !");
     freeCoarseMap();
     return false;
   }
   memset(coarseMap, 0, mapSize);
-  Serial.printf("[ASTAR] Map RAM allouée: %d x %d\n", coarseW, coarseH);
+  Serial.printf("[ASTAR] Map RAM allouée: %d x %d (%d octets)\n", coarseW,
+                coarseH, mapSize + mapSize * 2);
   return true;
 }
 
@@ -155,8 +150,20 @@ bool computeAStarPath(float startX_m, float startY_m, float endX_m,
 
   int mapSize = coarseW * coarseH;
 
-  if (!parentMap || !closedSet || !gScore) {
-    Serial.println("[ASTAR] Erreur: Pointeurs globaux non alloués !");
+  if (!parentMap) {
+    Serial.println("[ASTAR] Erreur: parentMap non alloué !");
+    return false;
+  }
+
+  // Allocation temporaire de closedSet et gScore (libérés à la fin)
+  uint8_t *closedSet = (uint8_t *)malloc(mapSize);
+  float *gScore = (float *)malloc(mapSize * sizeof(float));
+  if (!closedSet || !gScore) {
+    Serial.println("[ASTAR] Pas assez de RAM pour le calcul A*");
+    if (closedSet)
+      free(closedSet);
+    if (gScore)
+      free(gScore);
     return false;
   }
 
@@ -312,6 +319,10 @@ bool computeAStarPath(float startX_m, float startY_m, float endX_m,
     Serial.printf("[ASTAR] Chemin partiel : %d étapes (dist restante: %d)\n",
                   pathLength, bestDist);
   }
+
+  // Libérer les buffers temporaires
+  free(closedSet);
+  free(gScore);
 
   return pathLength > 0;
 }
